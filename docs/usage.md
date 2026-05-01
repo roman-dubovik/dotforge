@@ -31,23 +31,70 @@ On a clean macOS install, open Terminal and run a single command:
 curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash
 ```
 
-Total time on a clean machine: ~15–20 minutes (most of it is Homebrew + cask
-downloads). You will be prompted three times:
+The script first installs the minimum needed to render its own menu (Xcode
+CLT, Homebrew, gum), then shows a top-level menu:
 
-1. **Xcode Command Line Tools installer** — the macOS GUI dialog that appears;
-   click *Install* and accept the EULA. Bootstrap waits until installation
-   completes.
-2. **Machine name** (gum) — short, human-friendly identifier. Default is the
-   machine's `LocalHostName`. Used in templates only; nothing critical depends
-   on it yet.
-3. **Profile** (gum) — `personal` or `work`. Determines git email, SSH key
-   names, and any profile-conditional dotfile blocks.
-4. **Bitwarden master password** — typed into `bw login` / `bw unlock` (and 2FA
-   if your account uses it). Bootstrap unlocks the vault, runs SSH-key
-   restoration, and locks the vault again on exit.
+```
+What would you like to do?
+  > setup     — Set up this Mac (full bootstrap)
+    update    — Pull latest dotfiles from remote and re-apply
+    sync      — Promote local extras into the canonical Brewfile
+    customize — Re-pick which Brewfile sections to install
+    browse    — Read-only walkthrough of what's available
+    exit      — Quit
+```
+
+For a brand-new Mac, pick **setup** — it walks you through:
+
+1. **Bootstrap dependencies** — installs `chezmoi`, `bitwarden-cli`, `yq`, `gum`.
+2. **Machine name** (`gum input`) — short, human-friendly identifier; default
+   is the machine's `LocalHostName`.
+3. **Profile** (`gum choose`) — `personal` or `work`. Determines git email,
+   SSH key names, and any profile-conditional dotfile blocks.
+4. **Bitwarden login** (`bw login` / `bw unlock`) — master password (and 2FA
+   if your account uses it). Vault is locked again on script exit via trap.
+5. **Brewfile customizer** (optional, `gum confirm` defaults to Yes) — pick
+   archetype, fine-tune sections, preview, write `Brewfile.local`. See
+   [Customizing the Brewfile](#customizing-the-brewfile).
+6. **chezmoi apply** — installs dotfiles, runs the Brewfile and SSH-keys
+   hooks.
+
+Total time on a clean machine: ~15–20 minutes (most of it is Homebrew + cask
+downloads).
 
 After completion, **restart your shell** (open a new tab in iTerm/Terminal) so
 the new `~/.zshrc` is sourced.
+
+### Skipping the menu (direct subcommands)
+
+You can pass the action as an argument to skip the menu:
+
+```bash
+bootstrap.sh setup       # full bootstrap
+bootstrap.sh update      # chezmoi update + apply
+bootstrap.sh sync        # run scripts/sync-brewfile.sh
+bootstrap.sh customize   # run scripts/customize-brewfile.sh
+bootstrap.sh browse      # read-only walkthrough
+bootstrap.sh --help      # show this list
+```
+
+The same applies if you `curl ... | bash` — append `bash -s -- <subcommand>`:
+
+```bash
+curl -fsSL https://.../bootstrap.sh | bash -s -- update
+```
+
+### What "browse" shows
+
+A read-only walkthrough that works even before `setup` (uses the cloned repo
+if available, falls back to `curl` from raw.githubusercontent.com):
+
+- Canonical `Brewfile` (via `gum pager`)
+- Current chezmoi state: profile, machine_name, active Brewfile, bw status
+- List of managed dotfiles (`chezmoi/dot_*`, `chezmoi/private_dot_*`)
+- Each chezmoi script hook content
+- This `docs/usage.md` document
+- Open the GitHub repo in your default browser
 
 ---
 
