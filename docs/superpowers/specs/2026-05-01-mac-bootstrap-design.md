@@ -197,7 +197,7 @@ features:
 
 ### 4.1. `bootstrap.sh` — точка входа
 
-Запускается через `curl -fsSL https://raw.githubusercontent.com/romandubovik/dotforge/main/bootstrap.sh | bash` (URL шортится через `dotforge.romandubovik.dev/install` если есть домен).
+Запускается через `curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash` (URL шортится через `dotforge.roman-dubovik.dev/install` если есть домен).
 
 **Шаги:**
 1. Проверка macOS, версии, наличия `xcode-select`. Установка Xcode CLT (диалог macOS, ~5 мин).
@@ -211,7 +211,7 @@ features:
    - Bitwarden email + master password.
 5. **Логин в Bitwarden:** `bw login`, экспорт `BW_SESSION` в env.
 6. **Передача значений в `chezmoi init`** через флаги `--promptString` / `--promptStringList`. `.chezmoi.toml.tmpl` использует эти promptString-ы для генерации `~/.config/chezmoi/chezmoi.toml`. Bootstrap **не пишет конфиг руками**.
-7. `chezmoi init --apply romandubovik/dotforge --promptString profile=$P --promptString archetype=$A --promptStringList features=$F ...` — клонирует репо и применяет. `BW_SESSION` доступен всем хукам.
+7. `chezmoi init --apply roman-dubovik/dotforge --promptString profile=$P --promptString archetype=$A --promptStringList features=$F ...` — клонирует репо и применяет. `BW_SESSION` доступен всем хукам.
 8. После завершения — `bw lock`.
 
 **Идемпотентность:** на повторном запуске bootstrap пропускает уже установленное (Homebrew, CLT, chezmoi). Если `chezmoi.toml` уже есть — спрашивает "переконфигурировать?" с дефолтом No.
@@ -547,7 +547,7 @@ dotforge/
 ### 6.1. Bootstrap новой машины
 
 ```
-$ curl -fsSL https://raw.githubusercontent.com/romandubovik/dotforge/main/bootstrap.sh | bash
+$ curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash
 
 ────── Bootstrap dotforge ──────
 
@@ -737,7 +737,7 @@ To add to a server:
 ## 9. Открытые вопросы и будущая работа
 
 1. **Mas (Mac App Store)** — некоторые приложения только в App Store (Xcode, Things, и т.п.). `mas` CLI требует логина в App Store. На bootstrap пропускаем `mas` блоки если не залогинен; добавить в README инструкцию.
-2. **Domain `dotforge.romandubovik.dev`** — опциональный шорт-URL для bootstrap. Без него работает прямой URL на raw.githubusercontent.com. Решение откладываем.
+2. **Domain `dotforge.roman-dubovik.dev`** — опциональный шорт-URL для bootstrap. Без него работает прямой URL на raw.githubusercontent.com. Решение откладываем.
 3. **CI на репо** — линтер для archetype YAML, проверка валидности Brewfile, тест bootstrap в Docker (если есть macOS runner). Откладываем.
 4. **Локальные `.env` рабочих проектов** — упомянуты пользователем как возможный кейс. Если будут — добавятся как Bitwarden attachments + хук, который кладёт их в `~/work/<project>/.env`. Пока scope не уточнён.
 5. **Auto-commit `used_on` в манифесте** — нужно ли требовать ручной коммит, или пушить в специальную ветку автоматически? Отложено, по умолчанию первая итерация делает локальный коммит без push.

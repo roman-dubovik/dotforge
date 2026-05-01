@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Mac dotfiles bootstrap.
-# Usage: curl -fsSL https://raw.githubusercontent.com/romandubovik/dotforge/main/bootstrap.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash
 
 set -euo pipefail
 
-REPO="romandubovik/dotforge"
+REPO="roman-dubovik/dotforge"
 REPO_BRANCH="main"
 
 # ── Helpers ──

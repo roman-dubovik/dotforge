@@ -4,7 +4,7 @@
 
 **Goal:** Создать публичный dotforge репо, при `curl ... | bash` на чистом Mac разворачивающий полный setup: Homebrew + Brewfile, dotfiles через chezmoi, SSH-ключи из Bitwarden, конфиг Claude. Один канонический setup без архетипов.
 
-**Architecture:** Public GitHub-репо `github.com/romandubovik/dotforge`. Bootstrap-скрипт ставит инфру (Xcode CLT → Homebrew → chezmoi/bw/yq/gum) и передаёт управление chezmoi. Хуки chezmoi применяют Brewfile и тянут SSH-ключи из Bitwarden. Все секреты — в Bitwarden.
+**Architecture:** Public GitHub-репо `github.com/roman-dubovik/dotforge`. Bootstrap-скрипт ставит инфру (Xcode CLT → Homebrew → chezmoi/bw/yq/gum) и передаёт управление chezmoi. Хуки chezmoi применяют Brewfile и тянут SSH-ключи из Bitwarden. Все секреты — в Bitwarden.
 
 **Tech Stack:** bash, chezmoi (Go templates), Homebrew, Bitwarden CLI (`bw`), `yq`, `gum` (TUI), `shellcheck` (линт), `bats` (тесты bash-функций).
 
@@ -63,14 +63,14 @@ EOF
 - [ ] **Шаг 1.2: Создать минимальный README.md**
 
 ```markdown
-# romandubovik/dotforge
+# roman-dubovik/dotforge
 
 Personal Mac bootstrap: one command installs and configures a new machine.
 
 ## Install on a new Mac
 
 \`\`\`bash
-curl -fsSL https://raw.githubusercontent.com/romandubovik/dotforge/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash
 \`\`\`
 
 ## What's included
@@ -851,11 +851,11 @@ git commit -m "feat(chezmoi): hook to restore SSH keys from Bitwarden"
 cat > ~/Documents/Projects/dotforge/bootstrap.sh <<'EOF'
 #!/usr/bin/env bash
 # Mac dotfiles bootstrap.
-# Usage: curl -fsSL https://raw.githubusercontent.com/romandubovik/dotforge/main/bootstrap.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash
 
 set -euo pipefail
 
-REPO="romandubovik/dotforge"
+REPO="roman-dubovik/dotforge"
 REPO_BRANCH="main"
 
 # ── Helpers ──
@@ -1196,7 +1196,7 @@ Expected: `Hi <username>! You've successfully authenticated...`
 - [ ] **Шаг 19.1: Создать публичный репозиторий на GitHub**
 
 ```bash
-gh repo create romandubovik/dotforge --public --source=~/Documents/Projects/dotforge --remote=origin --push --description "Personal Mac bootstrap"
+gh repo create roman-dubovik/dotforge --public --source=~/Documents/Projects/dotforge --remote=origin --push --description "Personal Mac bootstrap"
 ```
 
 Если `gh` ещё не залогинен:
@@ -1207,7 +1207,7 @@ gh auth login
 - [ ] **Шаг 19.2: Проверить публичную доступность bootstrap.sh**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/romandubovik/dotforge/main/bootstrap.sh | head -20
+curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | head -20
 ```
 
 Должен вернуть начало `bootstrap.sh`. Если 404 — проверить что репо публичный.
@@ -1237,7 +1237,7 @@ System Settings → Users & Groups → Add User → `bootstrap-test`. Залог
 
 В терминале новой учётки:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/romandubovik/dotforge/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash
 ```
 
 Пройти все интерактивные шаги. Дождаться завершения (~20 минут на холодной машине).
@@ -1268,12 +1268,12 @@ System Settings → Users & Groups → удалить `bootstrap-test`.
 - [ ] **Шаг 21.1: Обновить README с реальной документацией**
 
 ```markdown
-# romandubovik/dotforge
+# roman-dubovik/dotforge
 
 Personal Mac bootstrap. One command on a fresh Mac:
 
 \`\`\`bash
-curl -fsSL https://raw.githubusercontent.com/romandubovik/dotforge/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash
 \`\`\`
 
 ## What it does

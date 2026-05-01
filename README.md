@@ -1,9 +1,9 @@
-# romandubovik/dotforge
+# roman-dubovik/dotforge
 
 Personal Mac bootstrap. One command on a fresh Mac:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/romandubovik/dotforge/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash
 ```
 
 ## What it does
