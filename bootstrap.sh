@@ -113,6 +113,7 @@ show_main_menu() {
         "update    — Pull latest dotfiles from remote and re-apply" \
         "sync      — Promote local extras into the canonical Brewfile" \
         "customize — Re-pick which Brewfile sections to install" \
+        "add-key   — Upload a new SSH key to Bitwarden (profile or machine scope)" \
         "browse    — Read-only walkthrough of what's available" \
         "exit      — Quit"
 }
@@ -208,6 +209,35 @@ cmd_customize() {
     bash "$repo_root/scripts/customize-brewfile.sh"
     say "If you want to apply the new Brewfile.local now, run:"
     echo "  chezmoi apply --include=scripts -v"
+}
+
+# ── Subcommand: add-key ──
+
+cmd_add_key() {
+    local repo_root
+    repo_root="$(get_repo_root)"
+    if [[ -z "$repo_root" || ! -x "$repo_root/scripts/add-ssh-key.sh" ]]; then
+        err "Repo not cloned yet (run 'setup' first)."
+    fi
+
+    # Make sure bw is unlocked. If BW_SESSION is empty, prompt for unlock.
+    if [[ -z "${BW_SESSION:-}" ]] || ! bw_is_unlocked; then
+        say "Unlocking Bitwarden..."
+        if bw status 2>/dev/null | grep -q '"status":"unauthenticated"'; then
+            BW_SESSION="$(bw login --raw)"
+        else
+            BW_SESSION="$(bw unlock --raw)"
+        fi
+        export BW_SESSION
+        trap 'bw lock >/dev/null 2>&1 || true; unset BW_SESSION' EXIT
+    fi
+
+    bash "$repo_root/scripts/add-ssh-key.sh" "$@"
+}
+
+# Used by cmd_add_key — pulled from lib/secrets.sh if available, else fallback.
+bw_is_unlocked() {
+    bw status 2>/dev/null | grep -q '"status":"unlocked"'
 }
 
 # ── Subcommand: browse ──
@@ -343,17 +373,19 @@ main() {
     preflight
 
     local subcommand="${1:-}"
+    [[ $# -gt 0 ]] && shift   # remove subcommand from "$@" so the remainder
+                              # can be forwarded to whichever cmd_* it picks
 
     # If user passed a direct subcommand, validate quickly and dispatch.
     case "$subcommand" in
-        setup|update|sync|customize|browse|"")
+        setup|update|sync|customize|add-key|browse|"")
             ;;
         --help|-h|help)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *)
-            err "Unknown subcommand: $subcommand (try: setup, update, sync, customize, browse)"
+            err "Unknown subcommand: $subcommand (try: setup, update, sync, customize, add-key, browse)"
             ;;
     esac
 
@@ -378,8 +410,9 @@ main() {
     case "$subcommand" in
         setup)     cmd_setup ;;
         update)    cmd_update ;;
-        sync)      install_bootstrap_deps gum bitwarden-cli yq; cmd_sync ;;
-        customize) install_bootstrap_deps gum;                  cmd_customize ;;
+        sync)      install_bootstrap_deps gum bitwarden-cli yq jq; cmd_sync ;;
+        customize) install_bootstrap_deps gum;                     cmd_customize ;;
+        add-key)   install_bootstrap_deps gum bitwarden-cli jq;    cmd_add_key "$@" ;;
         browse)    cmd_browse ;;
         exit)      ok "Bye." ;;
         *)         err "Unknown choice: $subcommand" ;;

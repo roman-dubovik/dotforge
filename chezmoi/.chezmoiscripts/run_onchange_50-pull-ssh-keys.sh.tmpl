@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
-# Pull SSH keys from Bitwarden for the active profile.
-# version: ssh-keys-v2 {{ .profile }}
+# Pull SSH keys from Bitwarden for the active profile + machine.
+#
+# Two-tier item naming:
+#   dotforge-ssh-<profile>            — keys shared across all machines of
+#                                       this profile (e.g., the GitHub key
+#                                       you copy to every personal Mac)
+#   dotforge-ssh-<profile>-<machine>  — keys that live on this specific
+#                                       machine only (e.g., a default
+#                                       id_ed25519 with unique content per
+#                                       Mac, or a one-off deploy key)
+#
+# The hook reads the attachment list from each item dynamically, so adding
+# a key only requires uploading it to one of these items (see
+# scripts/add-ssh-key.sh) — no source-code change to this hook.
+#
+# version: ssh-keys-v3 {{ .profile }} {{ .machine_name }}
 
 set -euo pipefail
 
 PROFILE="{{ .profile }}"
+MACHINE_NAME="{{ .machine_name }}"
 SOURCE_PATH="$(chezmoi source-path 2>/dev/null || echo "$HOME/.local/share/chezmoi")"
 REPO_ROOT="${SOURCE_PATH%/chezmoi}"
 
@@ -13,38 +28,18 @@ source "$REPO_ROOT/lib/log.sh"
 # shellcheck source=/dev/null
 source "$REPO_ROOT/lib/secrets.sh"
 
-# All keys live as attachments on a single Bitwarden item per profile.
-ITEM="dotforge-ssh-$PROFILE"
+ITEM_PROFILE="dotforge-ssh-$PROFILE"
+ITEM_MACHINE="dotforge-ssh-$PROFILE-$MACHINE_NAME"
 
-# Key basenames per profile (private + .pub auto-derived).
-{{ if eq .profile "personal" -}}
-KEY_BASENAMES=(
-    id_ed25519_github_booroman
-    id_ed25519
-    id_ed25519_ident_tg_bot
-    id_rsa
-    id_rsa_pureboard
-)
-{{ else if eq .profile "work" -}}
-KEY_BASENAMES=(
-    id_ed25519_work
-)
-{{- end }}
-
-# Skip entirely if every key (and its .pub) is already present and non-empty.
-all_present=true
-for basename in "${KEY_BASENAMES[@]}"; do
-    if [[ ! -s "$HOME/.ssh/$basename" || ! -s "$HOME/.ssh/$basename.pub" ]]; then
-        all_present=false
-        break
-    fi
-done
-if $all_present; then
-    log_ok "All SSH keys for profile '$PROFILE' already in place"
-    exit 0
-fi
-
-log_info "Restoring SSH keys for profile '$PROFILE' from Bitwarden item '$ITEM'..."
+# List the basenames of private-key attachments inside a Bitwarden item.
+# Returns nothing (and exit 0) if the item doesn't exist.
+list_keys_in_item() {
+    local item="$1"
+    bw get item "$item" 2>/dev/null \
+        | jq -r '.attachments[]?.fileName' 2>/dev/null \
+        | grep -v '\.pub$' \
+        || true
+}
 
 bw_ensure_unlocked || {
     log_error "Cannot unlock Bitwarden — skipping SSH key restore."
@@ -52,14 +47,63 @@ bw_ensure_unlocked || {
     exit 0
 }
 
+# Build a list of (basename|source_item) tasks. Machine-level keys win on
+# duplicate basename — they're processed first and their basename is added
+# to the seen list so the profile-level loop skips it.
+TASKS=()
+SEEN=()
+
+is_seen() {
+    local target="$1" s
+    for s in "${SEEN[@]:-}"; do
+        [[ "$s" == "$target" ]] && return 0
+    done
+    return 1
+}
+
+while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    if ! is_seen "$f"; then
+        TASKS+=("$f|$ITEM_MACHINE")
+        SEEN+=("$f")
+    fi
+done < <(list_keys_in_item "$ITEM_MACHINE")
+
+while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    if ! is_seen "$f"; then
+        TASKS+=("$f|$ITEM_PROFILE")
+        SEEN+=("$f")
+    fi
+done < <(list_keys_in_item "$ITEM_PROFILE")
+
+if (( ${#TASKS[@]} == 0 )); then
+    log_warn "No SSH keys found in '$ITEM_PROFILE' or '$ITEM_MACHINE'."
+    log_warn "Run scripts/add-ssh-key.sh <basename> to upload a key first."
+    exit 0
+fi
+
+# Skip entirely if every key is already on disk
+all_present=true
+for task in "${TASKS[@]}"; do
+    basename="${task%|*}"
+    if [[ ! -s "$HOME/.ssh/$basename" || ! -s "$HOME/.ssh/$basename.pub" ]]; then
+        all_present=false
+        break
+    fi
+done
+if $all_present; then
+    log_ok "All SSH keys for profile '$PROFILE' (machine $MACHINE_NAME) already in place"
+    exit 0
+fi
+
+log_info "Restoring SSH keys for profile '$PROFILE' (machine $MACHINE_NAME)..."
+
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 
-# Track files we create in this run so cleanup-on-error only removes our own
-# partial writes (never the user's pre-existing keys).
 declare -a CREATED_FILES=()
 cleanup_partial() {
-    # Guard against `set -u` on empty arrays (bash 5.x raises unbound).
     [[ ${#CREATED_FILES[@]} -eq 0 ]] && return
     for f in "${CREATED_FILES[@]}"; do
         rm -f "$f"
@@ -67,7 +111,9 @@ cleanup_partial() {
 }
 trap cleanup_partial ERR
 
-for basename in "${KEY_BASENAMES[@]}"; do
+for task in "${TASKS[@]}"; do
+    basename="${task%|*}"
+    item="${task#*|}"
     KEY_PATH="$HOME/.ssh/$basename"
     PUB_PATH="$KEY_PATH.pub"
 
@@ -76,22 +122,22 @@ for basename in "${KEY_BASENAMES[@]}"; do
         continue
     fi
 
-    bw_get_attachment "$basename" "$ITEM" "$KEY_PATH" || {
-        log_error "Failed to fetch private key '$basename' from Bitwarden item '$ITEM'"
+    bw_get_attachment "$basename" "$item" "$KEY_PATH" || {
+        log_error "Failed to fetch private key '$basename' from '$item'"
         exit 1
     }
     CREATED_FILES+=("$KEY_PATH")
 
-    bw_get_attachment "$basename.pub" "$ITEM" "$PUB_PATH" || {
-        log_error "Failed to fetch public key '$basename.pub'"
+    bw_get_attachment "$basename.pub" "$item" "$PUB_PATH" || {
+        log_error "Failed to fetch public key '$basename.pub' from '$item'"
         exit 1
     }
     CREATED_FILES+=("$PUB_PATH")
 
     chmod 600 "$KEY_PATH"
     chmod 644 "$PUB_PATH"
-    log_ok "Restored: $basename"
+    log_ok "Restored: $basename (from $item)"
 done
 
 trap - ERR
-log_ok "SSH keys restored for profile '$PROFILE'"
+log_ok "SSH keys restored for profile '$PROFILE' (machine $MACHINE_NAME): ${#TASKS[@]} key(s) total"

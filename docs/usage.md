@@ -40,6 +40,7 @@ What would you like to do?
     update    — Pull latest dotfiles from remote and re-apply
     sync      — Promote local extras into the canonical Brewfile
     customize — Re-pick which Brewfile sections to install
+    add-key   — Upload a new SSH key to Bitwarden (profile or machine scope)
     browse    — Read-only walkthrough of what's available
     exit      — Quit
 ```
@@ -70,12 +71,13 @@ the new `~/.zshrc` is sourced.
 You can pass the action as an argument to skip the menu:
 
 ```bash
-bootstrap.sh setup       # full bootstrap
-bootstrap.sh update      # chezmoi update + apply
-bootstrap.sh sync        # run scripts/sync-brewfile.sh
-bootstrap.sh customize   # run scripts/customize-brewfile.sh
-bootstrap.sh browse      # read-only walkthrough
-bootstrap.sh --help      # show this list
+bootstrap.sh setup                   # full bootstrap
+bootstrap.sh update                  # chezmoi update + apply
+bootstrap.sh sync                    # run scripts/sync-brewfile.sh
+bootstrap.sh customize               # run scripts/customize-brewfile.sh
+bootstrap.sh add-key id_ed25519_x    # upload an SSH key to Bitwarden
+bootstrap.sh browse                  # read-only walkthrough
+bootstrap.sh --help                  # show this list
 ```
 
 The same applies if you `curl ... | bash` — append `bash -s -- <subcommand>`:
@@ -493,69 +495,98 @@ and reports what's missing.
 
 ## Adding or rotating SSH keys
 
-The design stores all keys for a profile as **attachments** on a single
-Bitwarden item named `dotforge-ssh-<profile>`. The chezmoi hook pulls a
-hard-coded list of basenames per profile.
+SSH keys are stored as Bitwarden **attachments** in two-tier items, and the
+chezmoi hook reads the list of attachments dynamically — adding or rotating
+a key never requires a code change to the hook.
+
+### Two-tier item naming
+
+| Bitwarden item | Scope | Use this for |
+|---|---|---|
+| `dotforge-ssh-<profile>` | shared across all machines using `profile` | the GitHub key you want on every personal Mac |
+| `dotforge-ssh-<profile>-<machine_name>` | only on this machine | a default `id_ed25519` whose content differs per machine, or a one-off deploy key |
+
+The hook enumerates attachments in both items and downloads them. On
+basename collision (the same `id_X` appears in both), **machine-level wins**
+— useful when you want a profile-shared default but override it on one Mac.
 
 ### Add a new key
 
-1. Generate or copy the key into `~/.ssh/id_ed25519_<short_name>` and the
-   matching `.pub`. Set perms `0600` / `0644`.
+```bash
+# 1) Generate or copy the key locally
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_work_jenkins -C "work-jenkins"
 
-2. Append the basename to the per-profile array in
-   `chezmoi/.chezmoiscripts/run_onchange_50-pull-ssh-keys.sh.tmpl`:
+# 2) Upload to Bitwarden via the helper
+export BW_SESSION="$(bw unlock --raw)"
+~/.local/share/chezmoi/scripts/add-ssh-key.sh id_ed25519_work_jenkins
+# → asks: profile (shared) vs machine (this Mac only)
+# → auto-creates the Bitwarden item if it doesn't exist
+```
 
-   ```bash
-   {{ if eq .profile "personal" -}}
-   KEY_BASENAMES=(
-       id_ed25519_github_booroman
-       id_ed25519
-       id_ed25519_ident_tg_bot
-       id_rsa
-       id_rsa_pureboard
-       id_ed25519_NEW_KEY        # <-- add here
-   )
-   ```
+Or pick a key interactively if you don't pass the basename:
 
-3. Mirror the same list in `scripts/seed-bitwarden-ssh-keys.sh` so re-seeding
-   stays in sync.
+```bash
+~/.local/share/chezmoi/scripts/add-ssh-key.sh
+# → lists all ~/.ssh/id_* keys, you pick one
+# → asks for scope
+```
 
-4. Upload the new pair to Bitwarden:
+Non-interactive form (e.g., for a script):
 
-   ```bash
-   export BW_SESSION="$(bw unlock --raw)"
-   bw create attachment --itemid <ITEM_ID> --file ~/.ssh/id_ed25519_NEW_KEY
-   bw create attachment --itemid <ITEM_ID> --file ~/.ssh/id_ed25519_NEW_KEY.pub
-   bw lock && unset BW_SESSION
-   ```
+```bash
+add-ssh-key.sh id_ed25519_work_jenkins --scope profile --non-interactive
+```
 
-   Get `<ITEM_ID>` with `bw list items --search dotforge-ssh-personal | jq -r '.[0].id'`.
+You can also start the helper from the bootstrap menu — pick `add-key`.
+The bootstrap unlocks Bitwarden for you if needed.
 
-5. Commit, push.
+### Verify on this machine
+
+```bash
+chezmoi apply --include=scripts -v
+```
+
+The hook is a no-op when keys are already on disk; it only fetches what's
+missing or zero-byte. Or trigger only the SSH-keys hook directly:
+
+```bash
+chezmoi execute-template < ~/.local/share/chezmoi/chezmoi/.chezmoiscripts/run_onchange_50-pull-ssh-keys.sh.tmpl | bash
+```
+
+### Verify on other machines
+
+The next `chezmoi update` (or `bootstrap.sh update` from the menu) on any
+other machine of the same profile will pick up profile-scoped keys
+automatically. Machine-scoped keys are invisible to other machines by
+design.
 
 ### Rotate a key
 
-1. Generate the new pair, replace `~/.ssh/id_*` and `~/.ssh/id_*.pub` locally.
-2. Delete the **old** attachments from the Bitwarden item via the GUI.
-3. Re-run the seeding script (it will only upload basenames declared in the
-   profile list, but will append next to existing — so delete first):
+1. Generate the new pair, replace `~/.ssh/id_*` and `~/.ssh/id_*.pub`
+   locally.
+2. **Delete the old attachments** from the Bitwarden item via the GUI.
+   (Bitwarden does not auto-replace; without deleting, you'll have two
+   attachments with the same filename — `bw_get_attachment` picks one
+   arbitrarily.)
+3. Re-upload via `add-ssh-key.sh <basename>`.
 
-   ```bash
-   ./scripts/seed-bitwarden-ssh-keys.sh personal
-   ```
+### Bulk-load existing keys (legacy seeding)
 
-### Re-seed everything from scratch
+`scripts/seed-bitwarden-ssh-keys.sh personal` was the original
+one-shot helper that uploads a hardcoded list of basenames at profile
+scope. It still works, but `add-ssh-key.sh` is the recommended path for
+new keys.
 
-If you want to start over — fresh Bitwarden item, fresh attachments — delete
-the existing `dotforge-ssh-personal` item via the Bitwarden GUI, then run:
+### Migrating from the old single-tier hook
 
-```bash
-export BW_SESSION="$(bw unlock --raw)"
-./scripts/seed-bitwarden-ssh-keys.sh personal
-```
+If you set up before the two-tier change, your `dotforge-ssh-<profile>`
+item already exists with all keys at profile scope. No migration is
+needed — the new dynamic hook reads the same item and finds the same
+keys. To move a specific key down to machine scope:
 
-The script creates a new Secure Note item and uploads all 10 attachments
-(5 pairs).
+1. Delete its private and `.pub` attachments from `dotforge-ssh-<profile>`
+   in the Bitwarden GUI.
+2. `add-ssh-key.sh <basename> --scope machine`
 
 ---
 
@@ -618,7 +649,8 @@ across `bw` versions and mocking.
 ├── scripts/
 │   ├── customize-brewfile.sh    # interactive Brewfile customizer (writes Brewfile.local)
 │   ├── sync-brewfile.sh         # diff + promote machine extras back to Brewfile
-│   └── seed-bitwarden-ssh-keys.sh   # one-shot helper to populate Bitwarden
+│   ├── add-ssh-key.sh           # upload an SSH key to Bitwarden (profile or machine scope)
+│   └── seed-bitwarden-ssh-keys.sh   # legacy one-shot bulk SSH-key seeder
 ├── lib/
 │   ├── log.sh                   # info/ok/warn/error/step/section helpers
 │   └── secrets.sh               # bw wrappers (is_unlocked / get_attachment)
