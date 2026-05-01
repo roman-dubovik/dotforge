@@ -1,41 +1,43 @@
 #!/usr/bin/env bash
-# Add an SSH key to Bitwarden so the chezmoi hook can restore it on this
-# (or other) machine(s).
+# Manage SSH keys stored as Bitwarden attachments.
 #
-# Two scopes:
-#   profile  — uploaded to dotforge-ssh-<profile>; every machine using
-#              this profile will fetch it on the next chezmoi apply
-#   machine  — uploaded to dotforge-ssh-<profile>-<machine_name>;
-#              ONLY this machine will fetch it
+# Modes:
+#   add-ssh-key.sh                    # SCAN: pick from local-not-in-Bitwarden, bulk upload
+#   add-ssh-key.sh <basename>         # SINGLE: upload one specific key
+#   add-ssh-key.sh --list             # INVENTORY: show what's where, no changes
 #
-# Usage:
-#   add-ssh-key.sh <basename>       # interactive scope picker
-#   add-ssh-key.sh <basename> --scope profile
-#   add-ssh-key.sh <basename> --scope machine
-#   add-ssh-key.sh                  # picks one of ~/.ssh/id_* interactively
+# Flags:
+#   --scope profile|machine           # skip the scope picker (applies to all selected)
+#   --non-interactive                 # auto-detected when no TTY
+#   --force                           # append even if attachment with same name exists
 #
-# Requires: bw (unlocked, BW_SESSION exported), jq.
+# Bitwarden items used:
+#   dotforge-ssh-<profile>            shared with every machine on this profile
+#   dotforge-ssh-<profile>-<machine>  this machine only
+#
+# Requires: bw (with BW_SESSION exported), jq, gum (for prompts).
 
 set -euo pipefail
 
 BASENAME=""
 SCOPE=""
 INTERACTIVE=1
+LIST_MODE=0
+FORCE=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --scope) SCOPE="$2"; shift 2 ;;
+        --list)  LIST_MODE=1; shift ;;
+        --force) FORCE=1; shift ;;
         --non-interactive) INTERACTIVE=0; shift ;;
-        --help|-h)
-            sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
-            exit 0
-            ;;
+        --help|-h) sed -n '2,/^$/p' "$0" | sed 's/^# \?//'; exit 0 ;;
         --*) echo "Unknown flag: $1" >&2; exit 2 ;;
         *)
             if [[ -z "$BASENAME" ]]; then
                 BASENAME="$1"
             else
-                echo "Unexpected argument: $1" >&2; exit 2
+                echo "Unexpected: $1" >&2; exit 2
             fi
             shift ;;
     esac
@@ -53,56 +55,151 @@ if [[ -z "${BW_SESSION:-}" ]]; then
     exit 1
 fi
 
-# Read profile + machine_name from chezmoi config
+# ── Read profile + machine_name from chezmoi config ──
+
 CONFIG="$HOME/.config/chezmoi/chezmoi.toml"
 [[ -f "$CONFIG" ]] || { echo "$CONFIG not found (run 'chezmoi init' first)" >&2; exit 1; }
 
 profile="$(grep -E '^[[:space:]]*profile[[:space:]]*=' "$CONFIG" | head -1 | sed 's/.*"\(.*\)".*/\1/')"
 machine="$(grep -E '^[[:space:]]*machine_name[[:space:]]*=' "$CONFIG" | head -1 | sed 's/.*"\(.*\)".*/\1/')"
+[[ -z "$profile" || -z "$machine" ]] && { echo "profile/machine_name missing in $CONFIG" >&2; exit 1; }
 
-[[ -z "$profile" ]] && { echo "profile missing in $CONFIG" >&2; exit 1; }
-[[ -z "$machine" ]] && { echo "machine_name missing in $CONFIG" >&2; exit 1; }
+ITEM_PROFILE="dotforge-ssh-$profile"
+ITEM_MACHINE="dotforge-ssh-$profile-$machine"
 
-# Pick a basename if not given
-if [[ -z "$BASENAME" ]]; then
-    if (( INTERACTIVE == 0 )); then
-        echo "Need a key basename in non-interactive mode (positional arg)." >&2
-        exit 2
+bw sync >/dev/null 2>&1 || true
+
+# ── Inventory helpers ──
+
+# Returns private-key attachment basenames (one per line) for an item.
+# Empty output if the item doesn't exist.
+list_keys_in_item() {
+    local item="$1"
+    bw get item "$item" 2>/dev/null \
+        | jq -r '.attachments[]?.fileName' 2>/dev/null \
+        | grep -v '\.pub$' \
+        || true
+}
+
+# True if $1 appears as an exact element of "$2 $3 …".
+in_array() {
+    local needle="$1"; shift
+    local h
+    for h in "$@"; do
+        [[ "$h" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+KEYS_PROFILE=()
+while IFS= read -r f; do [[ -n "$f" ]] && KEYS_PROFILE+=("$f"); done < <(list_keys_in_item "$ITEM_PROFILE")
+
+KEYS_MACHINE=()
+while IFS= read -r f; do [[ -n "$f" ]] && KEYS_MACHINE+=("$f"); done < <(list_keys_in_item "$ITEM_MACHINE")
+
+LOCAL_KEYS=()
+while IFS= read -r f; do
+    [[ -f "$f.pub" ]] || continue
+    LOCAL_KEYS+=("$(basename "$f")")
+done < <(find "$HOME/.ssh" -maxdepth 1 -name "id_*" -not -name "*.pub" 2>/dev/null | sort)
+
+# ── --list ──
+
+if (( LIST_MODE == 1 )); then
+    echo "── Profile-shared ($ITEM_PROFILE) ──"
+    if (( ${#KEYS_PROFILE[@]} == 0 )); then
+        echo "  (empty)"
+    else
+        for k in "${KEYS_PROFILE[@]}"; do
+            marker=""
+            in_array "$k" "${LOCAL_KEYS[@]+"${LOCAL_KEYS[@]}"}" && marker="$marker [also on disk]"
+            in_array "$k" "${KEYS_MACHINE[@]+"${KEYS_MACHINE[@]}"}" && marker="$marker [overridden by machine]"
+            echo "  $k$marker"
+        done
     fi
-    command -v gum >/dev/null 2>&1 || { echo "gum is required for the picker" >&2; exit 1; }
-    candidates=()
-    while IFS= read -r f; do
-        [[ -f "$f.pub" ]] && candidates+=("$(basename "$f")")
-    done < <(find "$HOME/.ssh" -maxdepth 1 -name "id_*" -not -name "*.pub" 2>/dev/null | sort)
-    if (( ${#candidates[@]} == 0 )); then
-        echo "No key pairs found in ~/.ssh/" >&2
-        exit 1
+    echo ""
+    echo "── Machine-only ($ITEM_MACHINE) ──"
+    if (( ${#KEYS_MACHINE[@]} == 0 )); then
+        echo "  (empty)"
+    else
+        for k in "${KEYS_MACHINE[@]}"; do
+            marker=""
+            in_array "$k" "${LOCAL_KEYS[@]+"${LOCAL_KEYS[@]}"}" && marker="$marker [also on disk]"
+            in_array "$k" "${KEYS_PROFILE[@]+"${KEYS_PROFILE[@]}"}" && marker="$marker [overrides profile]"
+            echo "  $k$marker"
+        done
     fi
-    BASENAME="$(printf "%s\n" "${candidates[@]}" | gum choose --header "Pick a key to upload:")"
-    [[ -z "$BASENAME" ]] && { echo "Cancelled."; exit 1; }
+    echo ""
+    echo "── Local in ~/.ssh, not in Bitwarden ──"
+    missing=()
+    for k in "${LOCAL_KEYS[@]+"${LOCAL_KEYS[@]}"}"; do
+        if ! in_array "$k" "${KEYS_PROFILE[@]+"${KEYS_PROFILE[@]}"}" \
+            && ! in_array "$k" "${KEYS_MACHINE[@]+"${KEYS_MACHINE[@]}"}"; then
+            missing+=("$k")
+        fi
+    done
+    if (( ${#missing[@]} == 0 )); then
+        echo "  (none — every local key is tracked)"
+    else
+        for k in "${missing[@]}"; do
+            echo "  $k"
+        done
+    fi
+    exit 0
 fi
 
-PRIV="$HOME/.ssh/$BASENAME"
-PUB="$PRIV.pub"
-[[ -f "$PRIV" ]] || { echo "Missing $PRIV" >&2; exit 1; }
-[[ -f "$PUB" ]]  || { echo "Missing $PUB" >&2; exit 1; }
+# ── Decide which keys to upload ──
 
-# Show key info
-fingerprint="$(ssh-keygen -lf "$PUB" 2>/dev/null | awk '{print $2}' || echo '?')"
-echo "Key:         $BASENAME"
-echo "Fingerprint: $fingerprint"
-echo "Profile:     $profile"
-echo "Machine:     $machine"
-echo ""
+KEYS_TO_UPLOAD=()
 
-# Pick scope
+if [[ -n "$BASENAME" ]]; then
+    # Single-key mode
+    KEYS_TO_UPLOAD+=("$BASENAME")
+else
+    # Scan mode
+    for k in "${LOCAL_KEYS[@]+"${LOCAL_KEYS[@]}"}"; do
+        if ! in_array "$k" "${KEYS_PROFILE[@]+"${KEYS_PROFILE[@]}"}" \
+            && ! in_array "$k" "${KEYS_MACHINE[@]+"${KEYS_MACHINE[@]}"}"; then
+            KEYS_TO_UPLOAD+=("$k")
+        fi
+    done
+
+    if (( ${#KEYS_TO_UPLOAD[@]} == 0 )); then
+        echo "✓ All local SSH keys are already in Bitwarden."
+        echo "  Run 'add-ssh-key.sh --list' to see the layout, or pass <basename> to re-upload."
+        exit 0
+    fi
+
+    if (( INTERACTIVE == 1 )); then
+        command -v gum >/dev/null 2>&1 || { echo "gum is required for the multi-select" >&2; exit 1; }
+        echo "Found ${#KEYS_TO_UPLOAD[@]} key(s) in ~/.ssh that aren't in Bitwarden yet."
+        echo ""
+        local_selected_csv="$(IFS=,; echo "${KEYS_TO_UPLOAD[*]}")"
+        chosen="$(printf "%s\n" "${KEYS_TO_UPLOAD[@]}" | gum choose \
+            --no-limit \
+            --selected="$local_selected_csv" \
+            --header "Pick keys to upload (space toggle, enter confirm):")"
+        KEYS_TO_UPLOAD=()
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && KEYS_TO_UPLOAD+=("$line")
+        done <<< "$chosen"
+    fi
+
+    if (( ${#KEYS_TO_UPLOAD[@]} == 0 )); then
+        echo "Nothing selected. Exiting."
+        exit 0
+    fi
+fi
+
+# ── Pick scope (applies to the whole batch) ──
+
 if [[ -z "$SCOPE" ]]; then
     if (( INTERACTIVE == 0 )); then
         echo "--scope required in non-interactive mode (profile|machine)" >&2
         exit 2
     fi
     command -v gum >/dev/null 2>&1 || { echo "gum is required for the scope picker" >&2; exit 1; }
-    pick="$(gum choose --header "Where to store '$BASENAME'?" \
+    pick="$(gum choose --header "Where to store ${#KEYS_TO_UPLOAD[@]} key(s)?" \
         "profile  — shared with all machines using profile=$profile" \
         "machine  — only on $machine (other machines won't get it)")"
     [[ -z "$pick" ]] && { echo "Cancelled."; exit 1; }
@@ -110,14 +207,13 @@ if [[ -z "$SCOPE" ]]; then
 fi
 
 case "$SCOPE" in
-    profile) ITEM_NAME="dotforge-ssh-$profile" ;;
-    machine) ITEM_NAME="dotforge-ssh-$profile-$machine" ;;
+    profile) ITEM_NAME="$ITEM_PROFILE" ;;
+    machine) ITEM_NAME="$ITEM_MACHINE" ;;
     *) echo "Invalid scope: $SCOPE (expected: profile|machine)" >&2; exit 1 ;;
 esac
 
-bw sync >/dev/null
+# ── Find or create the target item ──
 
-# Find or create the item
 ITEM_ID="$(bw list items --search "$ITEM_NAME" 2>/dev/null \
     | jq -r --arg n "$ITEM_NAME" '.[] | select(.name == $n) | .id' \
     | head -1)"
@@ -133,41 +229,61 @@ if [[ -z "$ITEM_ID" ]]; then
         | bw create item \
         | jq -r '.id')"
     echo "  ✓ Created item $ITEM_ID"
-else
-    # If a key with this basename already exists in the item, ask before
-    # appending a duplicate attachment.
-    existing="$(bw get item "$ITEM_ID" \
-        | jq -r --arg n "$BASENAME" '.attachments[]? | select(.fileName == $n) | .id' \
-        | head -1)"
-    if [[ -n "$existing" ]]; then
-        echo "Key '$BASENAME' already exists as an attachment in '$ITEM_NAME'."
-        if (( INTERACTIVE == 1 )) && command -v gum >/dev/null 2>&1; then
-            if ! gum confirm --default=No "Append a duplicate attachment? (You may want to delete the old one in the GUI first.)"; then
-                echo "Cancelled."
-                exit 0
-            fi
-        else
-            echo "  Use Bitwarden GUI to delete the old attachment, then re-run." >&2
-            exit 1
-        fi
-    fi
 fi
 
-echo "→ Uploading $BASENAME"
-bw create attachment --itemid "$ITEM_ID" --file "$PRIV" >/dev/null
-echo "→ Uploading $BASENAME.pub"
-bw create attachment --itemid "$ITEM_ID" --file "$PUB" >/dev/null
-bw sync >/dev/null
+# Existing attachment names in this item (for duplicate detection)
+EXISTING_ATTACHMENTS=()
+while IFS= read -r f; do
+    [[ -n "$f" ]] && EXISTING_ATTACHMENTS+=("$f")
+done < <(bw get item "$ITEM_ID" | jq -r '.attachments[]?.fileName' 2>/dev/null || true)
+
+# ── Upload loop ──
+
+n_uploaded=0
+n_skipped=0
+for basename in "${KEYS_TO_UPLOAD[@]}"; do
+    PRIV="$HOME/.ssh/$basename"
+    PUB="$PRIV.pub"
+    if [[ ! -f "$PRIV" || ! -f "$PUB" ]]; then
+        echo "  ⚠ Skipping $basename — file (or .pub) missing in ~/.ssh"
+        n_skipped=$((n_skipped+1))
+        continue
+    fi
+
+    if in_array "$basename" "${EXISTING_ATTACHMENTS[@]+"${EXISTING_ATTACHMENTS[@]}"}"; then
+        if (( FORCE == 1 )); then
+            : # fall through — append
+        elif (( INTERACTIVE == 1 )) && command -v gum >/dev/null 2>&1; then
+            if ! gum confirm --default=No "$basename already in $ITEM_NAME. Append a duplicate attachment? (consider deleting the old one first.)"; then
+                echo "  ⏭ Skipping $basename"
+                n_skipped=$((n_skipped+1))
+                continue
+            fi
+        else
+            echo "  ⏭ Skipping $basename (already exists; pass --force to append)"
+            n_skipped=$((n_skipped+1))
+            continue
+        fi
+    fi
+
+    fingerprint="$(ssh-keygen -lf "$PUB" 2>/dev/null | awk '{print $2}' || echo '?')"
+    echo "→ Uploading $basename ($fingerprint)"
+    bw create attachment --itemid "$ITEM_ID" --file "$PRIV" >/dev/null
+    bw create attachment --itemid "$ITEM_ID" --file "$PUB" >/dev/null
+    n_uploaded=$((n_uploaded+1))
+done
+
+bw sync >/dev/null 2>&1 || true
 
 echo ""
-echo "✓ Uploaded '$BASENAME' (private + .pub) to Bitwarden item '$ITEM_NAME'"
-echo ""
-echo "Next steps:"
-echo "  • This machine: 'chezmoi apply --include=scripts -v' to verify the hook"
-echo "    can fetch the new key (no-op if already present on disk)."
-if [[ "$SCOPE" == "profile" ]]; then
-    echo "  • Other machines on profile=$profile: next 'chezmoi update' will pick"
-    echo "    up the new key automatically (hook enumerates attachments)."
-else
-    echo "  • Other machines: nothing — this key is scoped to $machine only."
+echo "✓ Done. Uploaded $n_uploaded key(s), skipped $n_skipped, into '$ITEM_NAME'."
+
+if (( n_uploaded > 0 )); then
+    echo ""
+    echo "Verify on this machine:"
+    echo "  chezmoi apply --include=scripts -v"
+    if [[ "$SCOPE" == "profile" ]]; then
+        echo ""
+        echo "Other machines on profile=$profile will pick up the new key(s) on next 'bootstrap.sh update'."
+    fi
 fi

@@ -510,35 +510,64 @@ The hook enumerates attachments in both items and downloads them. On
 basename collision (the same `id_X` appears in both), **machine-level wins**
 — useful when you want a profile-shared default but override it on one Mac.
 
-### Add a new key
+### Add keys
+
+The helper script supports three modes:
 
 ```bash
-# 1) Generate or copy the key locally
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_work_jenkins -C "work-jenkins"
-
-# 2) Upload to Bitwarden via the helper
-export BW_SESSION="$(bw unlock --raw)"
-~/.local/share/chezmoi/scripts/add-ssh-key.sh id_ed25519_work_jenkins
-# → asks: profile (shared) vs machine (this Mac only)
-# → auto-creates the Bitwarden item if it doesn't exist
-```
-
-Or pick a key interactively if you don't pass the basename:
-
-```bash
+# A) BULK SCAN — finds local ~/.ssh/id_* keys not yet in Bitwarden,
+#    presents a multi-select, then uploads the chosen ones with one
+#    scope choice for the batch.
 ~/.local/share/chezmoi/scripts/add-ssh-key.sh
-# → lists all ~/.ssh/id_* keys, you pick one
-# → asks for scope
+
+# B) SINGLE — upload one specific key
+~/.local/share/chezmoi/scripts/add-ssh-key.sh id_ed25519_work_jenkins
+
+# C) INVENTORY — read-only listing of what's where (no upload prompts)
+~/.local/share/chezmoi/scripts/add-ssh-key.sh --list
 ```
 
-Non-interactive form (e.g., for a script):
+**Scope choice (asked once per run, applies to all selected keys):**
+
+- `profile` — uploads to `dotforge-ssh-<profile>`. Visible to every
+  machine using that profile.
+- `machine` — uploads to `dotforge-ssh-<profile>-<machine_name>`. This
+  machine only.
+
+**Non-interactive form** (skips the gum picker):
 
 ```bash
-add-ssh-key.sh id_ed25519_work_jenkins --scope profile --non-interactive
+add-ssh-key.sh id_ed25519_x --scope profile --non-interactive
+add-ssh-key.sh --scope machine --non-interactive   # bulk mode + scope
 ```
+
+**Duplicate handling**: if a key with the same basename is already an
+attachment in the target item, you'll be asked before appending a
+duplicate (or pass `--force`). Bitwarden tolerates duplicate filenames
+but `bw_get_attachment` would pick one arbitrarily — almost always you
+want to delete the old via the GUI first, then re-upload.
 
 You can also start the helper from the bootstrap menu — pick `add-key`.
 The bootstrap unlocks Bitwarden for you if needed.
+
+**Sample inventory output (`--list`):**
+
+```
+── Profile-shared (dotforge-ssh-personal) ──
+  id_ed25519_github_booroman [also on disk]
+  id_ed25519                  [also on disk] [overridden by machine]
+  id_rsa                      [also on disk]
+  id_rsa_pureboard            [also on disk]
+
+── Machine-only (dotforge-ssh-personal-mac-mini) ──
+  id_ed25519                  [also on disk] [overrides profile]
+
+── Local in ~/.ssh, not in Bitwarden ──
+  id_ed25519_new_key
+```
+
+The `[overrides profile]` / `[overridden by machine]` markers make the
+collision-resolution rule (machine wins) visible at a glance.
 
 ### Verify on this machine
 
