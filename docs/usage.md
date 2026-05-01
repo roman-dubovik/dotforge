@@ -11,15 +11,16 @@ End-to-end usage and operations reference for the
 4. [Interactivity](#interactivity)
 5. [Customizing the Brewfile](#customizing-the-brewfile)
 6. [Promoting machine extras back into the canonical Brewfile](#promoting-machine-extras-back-into-the-canonical-brewfile)
-7. [Profiles](#profiles)
-8. [Daily operations](#daily-operations)
-9. [Adding or rotating SSH keys](#adding-or-rotating-ssh-keys)
-10. [Editing dotfiles](#editing-dotfiles)
-11. [Managing Bitwarden secrets](#managing-bitwarden-secrets)
-12. [Repository layout](#repository-layout)
-13. [chezmoi naming conventions](#chezmoi-naming-conventions)
-14. [Troubleshooting](#troubleshooting)
-15. [What is not yet covered](#what-is-not-yet-covered)
+7. [Forking this repo for yourself](#forking-this-repo-for-yourself)
+8. [Profiles](#profiles)
+9. [Daily operations](#daily-operations)
+10. [Adding or rotating SSH keys](#adding-or-rotating-ssh-keys)
+11. [Editing dotfiles](#editing-dotfiles)
+12. [Managing Bitwarden secrets](#managing-bitwarden-secrets)
+13. [Repository layout](#repository-layout)
+14. [chezmoi naming conventions](#chezmoi-naming-conventions)
+15. [Troubleshooting](#troubleshooting)
+16. [What is not yet covered](#what-is-not-yet-covered)
 
 ---
 
@@ -41,6 +42,7 @@ What would you like to do?
     sync      — Promote local extras into the canonical Brewfile
     customize — Re-pick which Brewfile sections to install
     add-key   — Upload a new SSH key to Bitwarden (profile or machine scope)
+    fork      — Make your own dotforge for a different GitHub account
     browse    — Read-only walkthrough of what's available
     exit      — Quit
 ```
@@ -76,6 +78,7 @@ bootstrap.sh update                  # chezmoi update + apply
 bootstrap.sh sync                    # run scripts/sync-brewfile.sh
 bootstrap.sh customize               # run scripts/customize-brewfile.sh
 bootstrap.sh add-key id_ed25519_x    # upload an SSH key to Bitwarden
+bootstrap.sh fork --gh-user friend   # clone+personalize for another account
 bootstrap.sh browse                  # read-only walkthrough
 bootstrap.sh --help                  # show this list
 ```
@@ -388,6 +391,112 @@ organized.
 
 ---
 
+## Forking this repo for yourself
+
+If a friend wants to use the same bootstrap pattern under their own GitHub
+account — or you want a separate `dotforge-personal` and `dotforge-work`
+under the same account — the `fork` subcommand automates it.
+
+### Easy path (interactive)
+
+Either run the public bootstrap and pick `fork` from the menu, or:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash -s -- fork
+```
+
+The script will:
+
+1. Ask for a target directory (default `~/Documents/Projects/dotforge-mine`).
+2. `git clone --depth=1` this repo into that directory.
+3. Hand off to `scripts/personalize-fork.sh`, which:
+   - Prompts for your GitHub username, full name, email, and the new repo
+     name (default `dotforge`).
+   - Replaces `roman-dubovik/dotforge` → `<your-user>/<repo>`,
+     `Roman Dubovik` → your name, `booroman@gmail.com` → your email
+     across `bootstrap.sh`, `README.md`, `docs/usage.md`,
+     `chezmoi/dot_gitconfig.tmpl`, and `LICENSE`.
+   - Optionally resets the SSH config's `IdentityFile` example to a
+     generic `~/.ssh/id_ed25519` (`--reset-ssh`).
+   - Shows you `git diff --stat` (and a full diff via `gum pager` if
+     you want), then `git commit`s the personalization.
+   - Optionally creates a new public repo on your account via `gh repo
+     create` and pushes.
+4. Prints your new bootstrap URL.
+
+Once the fork is up, your friend uses **their** URL going forward:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/<their-user>/<their-repo>/main/bootstrap.sh | bash
+```
+
+The Bitwarden item names (`dotforge-ssh-<profile>`) are derived from the
+profile string only — no changes needed for them. Your friend will
+populate their own Bitwarden vault using the same `add-ssh-key.sh` flow.
+
+### Non-interactive form
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh \
+    | bash -s -- fork \
+        --gh-user friend-foo \
+        --name "Friend Foo" \
+        --email friend@example.com \
+        --repo dotforge \
+        --reset-ssh \
+        --create-remote
+```
+
+(Flags pass through `cmd_fork` to `personalize-fork.sh`.)
+
+### What the script does NOT touch
+
+- `Brewfile` — kept as-is. Your friend will probably want to run `sync`
+  on their machine to overwrite it with what they actually have
+  installed, or `customize` to pick a subset.
+- `chezmoi/private_dot_zshrc.tmpl` — preserved literally. Friends
+  generally have very different shell configs; recommend doing
+  `chezmoi re-add ~/.zshrc` on their machine after the first apply.
+- `chezmoi/dot_claude/settings.json` — your friend will need to
+  delete it (or replace) since it has your `enabledPlugins` list and
+  paths under `/Users/romandubovik/`.
+- `docs/superpowers/*` — historical design docs left intact for
+  reference.
+
+The script prints a "what to clean up next" hint at the end. If you want
+a stricter wipe (drop all of Roman's dotfiles, keep just the bootstrap
+machinery), do `chezmoi re-add` on the friend's actual machine after
+their first apply — it'll bring their real `.zshrc`, `.gitconfig`, etc.
+into their fork's source.
+
+### Manual path (if you don't want to use the script)
+
+```bash
+gh repo create <you>/<repo-name> --public --clone
+cd <repo-name>
+# Pull this repo's contents
+git remote add upstream https://github.com/roman-dubovik/dotforge.git
+git fetch upstream main
+git reset --hard upstream/main
+
+# Find/replace by hand
+grep -rl 'roman-dubovik/dotforge' . --exclude-dir=.git \
+    | xargs sed -i '' "s|roman-dubovik/dotforge|<you>/<repo-name>|g"
+grep -rl 'Roman Dubovik' . --exclude-dir=.git \
+    | xargs sed -i '' "s|Roman Dubovik|<Your Name>|g"
+grep -rl 'booroman@gmail.com' . --exclude-dir=.git \
+    | xargs sed -i '' "s|booroman@gmail.com|<your-email>|g"
+
+# Clean up upstream remote
+git remote remove upstream
+
+git add -A
+git commit -m "chore: personalize fork"
+git push
+```
+
+---
+
 ## Profiles
 
 `profile` is a single string (`personal` or `work`) that gates conditional
@@ -679,6 +788,7 @@ across `bw` versions and mocking.
 │   ├── customize-brewfile.sh    # interactive Brewfile customizer (writes Brewfile.local)
 │   ├── sync-brewfile.sh         # diff + promote machine extras back to Brewfile
 │   ├── add-ssh-key.sh           # upload an SSH key to Bitwarden (profile or machine scope)
+│   ├── personalize-fork.sh      # rewrite hardcoded user strings + push to your own gh
 │   └── seed-bitwarden-ssh-keys.sh   # legacy one-shot bulk SSH-key seeder
 ├── lib/
 │   ├── log.sh                   # info/ok/warn/error/step/section helpers

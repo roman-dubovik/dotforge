@@ -8,6 +8,8 @@
 #   bootstrap.sh update      # chezmoi update + apply
 #   bootstrap.sh sync        # promote local extras into the canonical Brewfile
 #   bootstrap.sh customize   # re-pick Brewfile sections
+#   bootstrap.sh add-key     # upload SSH keys to Bitwarden (bulk or single)
+#   bootstrap.sh fork        # clone+personalize this repo under your own GitHub
 #   bootstrap.sh browse      # read-only walkthrough
 
 set -euo pipefail
@@ -114,6 +116,7 @@ show_main_menu() {
         "sync      — Promote local extras into the canonical Brewfile" \
         "customize — Re-pick which Brewfile sections to install" \
         "add-key   — Upload a new SSH key to Bitwarden (profile or machine scope)" \
+        "fork      — Make your own dotforge for a different GitHub account" \
         "browse    — Read-only walkthrough of what's available" \
         "exit      — Quit"
 }
@@ -238,6 +241,36 @@ cmd_add_key() {
 # Used by cmd_add_key — pulled from lib/secrets.sh if available, else fallback.
 bw_is_unlocked() {
     bw status 2>/dev/null | grep -q '"status":"unlocked"'
+}
+
+# ── Subcommand: fork ──
+#
+# Clones roman-dubovik/dotforge to a target directory, then runs the
+# personalize-fork.sh helper to find/replace user-specific strings and
+# (optionally) create the user's own GitHub repo + push.
+cmd_fork() {
+    say "Creating a personalized fork of $REPO"
+
+    local default_dir="$HOME/Documents/Projects/dotforge-mine"
+    local target_dir
+    target_dir="$(gum input --prompt "Target directory: " --value "$default_dir")"
+    [[ -z "$target_dir" ]] && err "Target directory required"
+
+    if [[ -e "$target_dir" ]]; then
+        if gum confirm --default=No "$target_dir already exists. Remove it and re-clone?"; then
+            rm -rf "$target_dir"
+        else
+            err "Aborted (existing path)."
+        fi
+    fi
+
+    say "Cloning $REPO_URL → $target_dir"
+    git clone --depth=1 "$REPO_URL.git" "$target_dir"
+
+    # Run the personalize script in the cloned dir; it handles the rest.
+    bash "$target_dir/scripts/personalize-fork.sh" "$@"
+
+    ok "Fork complete. Your repo is in $target_dir"
 }
 
 # ── Subcommand: browse ──
@@ -378,14 +411,14 @@ main() {
 
     # If user passed a direct subcommand, validate quickly and dispatch.
     case "$subcommand" in
-        setup|update|sync|customize|add-key|browse|"")
+        setup|update|sync|customize|add-key|fork|browse|"")
             ;;
         --help|-h|help)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *)
-            err "Unknown subcommand: $subcommand (try: setup, update, sync, customize, add-key, browse)"
+            err "Unknown subcommand: $subcommand (try: setup, update, sync, customize, add-key, fork, browse)"
             ;;
     esac
 
@@ -413,6 +446,7 @@ main() {
         sync)      install_bootstrap_deps gum bitwarden-cli yq jq; cmd_sync ;;
         customize) install_bootstrap_deps gum;                     cmd_customize ;;
         add-key)   install_bootstrap_deps gum bitwarden-cli jq;    cmd_add_key "$@" ;;
+        fork)      install_bootstrap_deps gum git;                 cmd_fork "$@" ;;
         browse)    cmd_browse ;;
         exit)      ok "Bye." ;;
         *)         err "Unknown choice: $subcommand" ;;
