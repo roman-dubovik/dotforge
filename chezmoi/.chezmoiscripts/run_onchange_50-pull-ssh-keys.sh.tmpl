@@ -36,6 +36,13 @@ bw_ensure_unlocked || {
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 
+# Clean up partial files if any download fails — a half-restored key pair
+# (e.g. private key present but public missing) silently breaks ssh auth.
+cleanup_partial() {
+    rm -f "$KEY_PATH" "$PUB_PATH"
+}
+trap cleanup_partial ERR
+
 bw_get_attachment "$KEY_BASENAME" "$ITEM" "$KEY_PATH" || {
     log_error "Failed to fetch private key from Bitwarden item '$ITEM'"
     exit 1
@@ -44,6 +51,8 @@ bw_get_attachment "$KEY_BASENAME.pub" "$ITEM" "$PUB_PATH" || {
     log_error "Failed to fetch public key"
     exit 1
 }
+
+trap - ERR
 
 chmod 600 "$KEY_PATH"
 chmod 644 "$PUB_PATH"

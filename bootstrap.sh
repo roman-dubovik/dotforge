@@ -96,7 +96,6 @@ say "Cloning dotfiles repo and applying configuration..."
 
 chezmoi init --apply "$REPO" \
     --branch "$REPO_BRANCH" \
-    --source-path chezmoi \
     --promptString "machine_name=$MACHINE_NAME" \
     --promptChoice "profile=$PROFILE"
 
