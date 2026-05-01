@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Apply Brewfile. Re-runs when Brewfile content (hash) changes.
+# version: brewfile-v1 {{ .profile }}
+
+set -euo pipefail
+
+SOURCE_PATH="$(chezmoi source-path 2>/dev/null || echo "$HOME/.local/share/chezmoi")"
+BREWFILE="${SOURCE_PATH%/chezmoi}/Brewfile"
+
+if [[ ! -f "$BREWFILE" ]]; then
+    echo "Brewfile not found at $BREWFILE" >&2
+    exit 1
+fi
+
+echo "Applying Brewfile: $BREWFILE"
+brew bundle install --file="$BREWFILE" --no-lock
