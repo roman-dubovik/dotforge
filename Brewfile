@@ -1,5 +1,4 @@
 # ── Taps ──
-tap "homebrew/bundle"
 tap "hudochenkov/sshpass"
 tap "ngrok/ngrok"
 tap "supabase/tap"
