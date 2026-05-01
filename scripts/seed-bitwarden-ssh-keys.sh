@@ -80,9 +80,14 @@ ITEM_ID="$(bw list items --search "$ITEM_NAME" 2>/dev/null \
 
 if [[ -z "$ITEM_ID" ]]; then
     echo "Creating Bitwarden item '$ITEM_NAME'..."
+    # Type 2 = Secure Note (no login fields needed for an attachment-only item).
+    # The .login={uris:[]} stub avoids a known bw bug that reads .login.uris
+    # even when type != 1.
     ITEM_ID="$(bw get template item \
         | jq --arg name "$ITEM_NAME" --arg notes "Managed by dotforge. SSH keys for profile $PROFILE" \
-            '.name = $name | .notes = $notes' \
+            '.type = 2 | .name = $name | .notes = $notes
+             | .secureNote = {"type": 0}
+             | .login = {"uris": [], "username": null, "password": null, "totp": null}' \
         | bw encode \
         | bw create item \
         | jq -r '.id')"
