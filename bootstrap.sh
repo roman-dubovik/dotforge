@@ -91,13 +91,30 @@ export BW_SESSION
 trap 'bw lock >/dev/null 2>&1 || true' EXIT
 ok "Bitwarden unlocked"
 
-# ── chezmoi init + apply ──
-say "Cloning dotfiles repo and applying configuration..."
+# ── chezmoi init (clone + generate config; do NOT apply yet) ──
+say "Cloning dotfiles repo..."
 
-chezmoi init --apply "$REPO" \
+chezmoi init "$REPO" \
     --branch "$REPO_BRANCH" \
     --promptString "machine_name=$MACHINE_NAME" \
     --promptChoice "profile=$PROFILE"
+
+REPO_ROOT="$(chezmoi source-path 2>/dev/null)"
+REPO_ROOT="${REPO_ROOT%/chezmoi}"
+
+# ── Brewfile customizer (optional) ──
+say "Brewfile customization (interactive)"
+
+if gum confirm --default=Yes "Customize what gets installed (pick archetype + sections)?"; then
+    bash "$REPO_ROOT/scripts/customize-brewfile.sh" --no-install
+    ok "Brewfile.local written. The brewfile hook will use it during apply."
+else
+    ok "Skipped customizer — full canonical Brewfile will be used."
+fi
+
+# ── chezmoi apply ──
+say "Applying chezmoi configuration..."
+chezmoi apply -v
 
 ok "chezmoi apply complete"
 say "Done! Restart your shell to pick up new configuration."

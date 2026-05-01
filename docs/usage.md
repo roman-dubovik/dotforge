@@ -9,15 +9,16 @@ End-to-end usage and operations reference for the
 2. [Prerequisites](#prerequisites)
 3. [What the bootstrap does](#what-the-bootstrap-does)
 4. [Interactivity](#interactivity)
-5. [Profiles](#profiles)
-6. [Daily operations](#daily-operations)
-7. [Adding or rotating SSH keys](#adding-or-rotating-ssh-keys)
-8. [Editing dotfiles](#editing-dotfiles)
-9. [Managing Bitwarden secrets](#managing-bitwarden-secrets)
-10. [Repository layout](#repository-layout)
-11. [chezmoi naming conventions](#chezmoi-naming-conventions)
-12. [Troubleshooting](#troubleshooting)
-13. [What is not yet covered](#what-is-not-yet-covered)
+5. [Customizing the Brewfile](#customizing-the-brewfile)
+6. [Profiles](#profiles)
+7. [Daily operations](#daily-operations)
+8. [Adding or rotating SSH keys](#adding-or-rotating-ssh-keys)
+9. [Editing dotfiles](#editing-dotfiles)
+10. [Managing Bitwarden secrets](#managing-bitwarden-secrets)
+11. [Repository layout](#repository-layout)
+12. [chezmoi naming conventions](#chezmoi-naming-conventions)
+13. [Troubleshooting](#troubleshooting)
+14. [What is not yet covered](#what-is-not-yet-covered)
 
 ---
 
@@ -81,44 +82,161 @@ yq, the Brewfile contents).
    logged in) captures the session into `BW_SESSION`. An `EXIT` trap calls
    `bw lock` so the vault is sealed when bootstrap finishes (success or
    failure).
-7. **chezmoi init + apply** — clones `roman-dubovik/dotforge` to
+7. **chezmoi init** — clones `roman-dubovik/dotforge` to
    `~/.local/share/chezmoi`, reads `.chezmoiroot` to find the `chezmoi/`
    subdirectory as the source, generates `~/.config/chezmoi/chezmoi.toml`
-   from `.chezmoi.toml.tmpl` (using the prompt values), then applies all
-   managed files plus runs the script hooks:
+   from `.chezmoi.toml.tmpl` (using the prompt values). Does **not** apply
+   yet.
+8. **Brewfile customizer** (optional, default Yes) — `gum confirm` offers
+   to run `scripts/customize-brewfile.sh`, which lets you pick an archetype
+   (`full` / `minimal-dev` / `cli-server` / `custom`), optionally fine-tune
+   sections, preview each before installing, and writes `Brewfile.local`.
+   See [Customizing the Brewfile](#customizing-the-brewfile) for details.
+9. **chezmoi apply** — applies dotfiles and runs the script hooks:
    - `run_once_before_10-install-bw.sh` — guarantees `bitwarden-cli` and `yq`
      even if Brew is in an odd state (idempotent).
-   - `run_onchange_20-apply-brewfile.sh.tmpl` — runs `brew bundle install`
-     against the repo's `Brewfile` (re-runs when the file content or profile
-     changes).
+   - `run_onchange_20-apply-brewfile.sh.tmpl` — runs `brew bundle install`,
+     using `Brewfile.local` if it exists (from step 8) and falling back to
+     the canonical `Brewfile` otherwise. Re-runs when the chosen Brewfile's
+     content or profile changes.
    - `run_onchange_50-pull-ssh-keys.sh.tmpl` — restores SSH keys from
      Bitwarden into `~/.ssh/`.
-8. **Done message** — bootstrap reminds you to restart your shell.
+10. **Done message** — bootstrap reminds you to restart your shell.
 
 ---
 
 ## Interactivity
 
-Interactivity is wired at two layers and intentionally minimal in Plan 1:
+Interactivity is wired at three layers:
 
 | Layer | Tool | Where | What it asks |
 |---|---|---|---|
 | Bootstrap | `gum input` | `bootstrap.sh` | Machine name (default = `LocalHostName`) |
 | Bootstrap | `gum choose` | `bootstrap.sh` | Profile: `personal` or `work` |
+| Bootstrap | `gum confirm` | `bootstrap.sh` | Whether to customize the Brewfile (Yes/No) |
 | Bootstrap | `bw login` / `bw unlock` | `bootstrap.sh` | Bitwarden email + master password (+ 2FA) |
+| Customizer | `gum choose` | `scripts/customize-brewfile.sh` | Archetype: `full` / `minimal-dev` / `cli-server` / `custom` |
+| Customizer | `gum choose --no-limit` | `scripts/customize-brewfile.sh` | Per-section toggle (when fine-tuning or `custom`) |
+| Customizer | `gum pager` | `scripts/customize-brewfile.sh` | Preview a section's content before installing |
+| Customizer | `gum confirm` | `scripts/customize-brewfile.sh` | Confirm install |
 | Xcode CLT | macOS native dialog | OS-managed | License acceptance |
 | chezmoi | `promptStringOnce` | `.chezmoi.toml.tmpl` | Same `machine_name`, only fires if `bootstrap.sh` skipped |
 | chezmoi | `promptChoiceOnce` | `.chezmoi.toml.tmpl` | Same `profile`, only fires if `bootstrap.sh` skipped |
 
-Things deliberately **not interactive** (per Plan 1 scope):
+See [Customizing the Brewfile](#customizing-the-brewfile) below for the full
+customizer flow.
 
-- The Brewfile is applied without confirmation. Casks and formulas listed in
-  `Brewfile` install directly on first apply.
+Things deliberately **not interactive**:
+
+- Once the customizer writes `Brewfile.local`, the chezmoi hook applies it
+  without further prompts. The customizer is the one place to opt out.
 - SSH-key restoration silently skips if Bitwarden is locked (it logs a warning
   and exits 0, so the rest of `chezmoi apply` continues). On the next run
   with a valid `BW_SESSION`, the keys download.
 - Archetype selection (dev-machine / media / ops-server) and feature flags —
-  postponed to Plan 2.
+  postponed to Plan 2. The Brewfile customizer (see below) covers the
+  90% case via section-level toggling without restructuring the repo.
+
+---
+
+## Customizing the Brewfile
+
+The canonical `Brewfile` lists ~86 entries (CLI tools + GUI casks + MAS apps).
+On a clean Mac you may want a smaller subset — e.g. for a server VM, a
+build-only machine, or a media-only profile. `scripts/customize-brewfile.sh`
+generates a `Brewfile.local` (gitignored) from your selection. The chezmoi
+brewfile hook prefers `Brewfile.local` over `Brewfile` when both exist, so
+the rest of bootstrap is unaffected.
+
+The customizer is offered automatically during `bootstrap.sh` (you can
+decline with the `gum confirm` dialog), and can be re-run any time
+afterward.
+
+### Archetypes
+
+| Archetype | Sections | Approx. entries |
+|---|---|---|
+| `full` | All 16 sections | ~86 |
+| `minimal-dev` | CLI + Bootstrap + Languages + Cloud + Media docs + Fonts + Browsers + Editors + AI + Dev utilities + Productivity | ~64 |
+| `cli-server` | CLI + Bootstrap + Languages + Cloud + Media docs (no GUI, no MAS) | ~45 |
+| `custom` | Whatever you pick in the multi-select | varies |
+
+### Interactive run
+
+```bash
+~/.local/share/chezmoi/scripts/customize-brewfile.sh
+```
+
+Walks you through:
+
+1. **Pick archetype** (`gum choose`).
+2. **Fine-tune?** (`gum confirm`) — for non-`custom` archetypes, optional.
+   `custom` always opens the multi-select.
+3. **Multi-select sections** (if fine-tuning) — `gum choose --no-limit`,
+   space toggles, enter confirms. Items are pre-checked based on the
+   chosen archetype.
+4. **Preview a section?** (loop) — pick a section, opens `gum pager` with
+   the literal block content from the canonical `Brewfile`.
+5. **Confirm install** — runs `brew bundle install --file=Brewfile.local`
+   right away, or skips if you say no.
+
+### Non-interactive run
+
+```bash
+~/.local/share/chezmoi/scripts/customize-brewfile.sh \
+    --archetype cli-server \
+    --no-install \
+    --non-interactive
+```
+
+Options:
+
+- `--archetype <name>` — `full`, `minimal-dev`, `cli-server`, `custom`.
+  In non-interactive mode this is required.
+- `--output <path>` — where to write the generated Brewfile (default:
+  `<repo-root>/Brewfile.local`).
+- `--brewfile <path>` — source Brewfile to read sections from (default:
+  `<repo-root>/Brewfile`).
+- `--no-install` — write the file but don't run `brew bundle install`.
+- `--non-interactive` — skip all prompts; auto-detected when stdin is not
+  a TTY.
+
+### Adjusting later
+
+Re-running the customizer overwrites `Brewfile.local`. To roll back to
+the canonical Brewfile, just delete `Brewfile.local`:
+
+```bash
+rm ~/.local/share/chezmoi/Brewfile.local
+chezmoi apply -v   # brewfile hook re-runs, picks up canonical Brewfile
+```
+
+### Sections in the canonical Brewfile
+
+The customizer parses sections from `# ── Title ──` headers. The current
+sections (Plan 1):
+
+| # | Section | Default in `cli-server` | Default in `minimal-dev` |
+|---|---|:---:|:---:|
+| 1 | Taps | ✓ | ✓ |
+| 2 | CLI essentials | ✓ | ✓ |
+| 3 | Bootstrap deps | ✓ | ✓ |
+| 4 | Languages / runtimes | ✓ | ✓ |
+| 5 | Cloud / dev tooling | ✓ | ✓ |
+| 6 | Media / docs | ✓ | ✓ |
+| 7 | Fonts | | ✓ |
+| 8 | Browsers | | ✓ |
+| 9 | Terminals & editors | | ✓ |
+| 10 | Dev utilities | | ✓ |
+| 11 | AI assistants (desktop) | | ✓ |
+| 12 | Productivity / window mgmt | | ✓ |
+| 13 | Networking / VPN / remote | | |
+| 14 | Communication | | |
+| 15 | Utilities | | |
+| 16 | Mac App Store apps | | |
+
+The trailing `# ── Manual install ──` block is informational comments only
+and is never written to `Brewfile.local`.
 
 ---
 
@@ -352,6 +470,7 @@ across `bw` versions and mocking.
 ├── LICENSE                      # MIT
 ├── bootstrap.sh                 # the one-command-bootstrap entry
 ├── scripts/
+│   ├── customize-brewfile.sh    # interactive Brewfile customizer (writes Brewfile.local)
 │   └── seed-bitwarden-ssh-keys.sh   # one-shot helper to populate Bitwarden
 ├── lib/
 │   ├── log.sh                   # info/ok/warn/error/step/section helpers
@@ -504,10 +623,13 @@ regenerate `~/.config/chezmoi/chezmoi.toml`.
 
 These are intentionally left for **Plan 2** (`docs/superpowers/plans/`):
 
-- **Archetypes** — switch a machine between roles like `dev-machine`,
-  `media-server`, `ops-bastion`, with role-specific Brewfiles.
-- **Feature flags** — opt in / out of bundles like `mobile-dev`,
-  `database-tools`, `ai-tools`.
+- **First-class archetypes / feature flags persisted in chezmoi data** —
+  the Brewfile customizer above covers the "pick a subset" use case
+  without restructuring the repo, but the chosen archetype lives in a
+  one-off `Brewfile.local` rather than `~/.config/chezmoi/chezmoi.toml`,
+  so re-running `chezmoi init` on a new machine doesn't carry the
+  archetype forward. Plan 2 will promote `archetype` and a `features`
+  list into `[data]`, where templates can reference them.
 - **`dot` CLI** — convenience wrapper providing `dot apply`, `dot doctor`,
   `dot snapshot`, `dot pull`, etc.
 - **Multi-machine sync** — Plan 3 territory: keeping personal-mac-mini

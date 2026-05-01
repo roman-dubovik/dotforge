@@ -6,3 +6,6 @@
 # Temp from snapshot operations
 /tmp/
 *.snap
+
+# Per-machine Brewfile customization (produced by customize-brewfile.sh)
+Brewfile.local
