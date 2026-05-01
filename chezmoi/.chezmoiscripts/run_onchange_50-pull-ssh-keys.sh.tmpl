@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pull SSH keys from Bitwarden for the active profile.
-# version: ssh-keys-v1 {{ .profile }}
+# version: ssh-keys-v2 {{ .profile }}
 
 set -euo pipefail
 
@@ -13,19 +13,38 @@ source "$REPO_ROOT/lib/log.sh"
 # shellcheck source=/dev/null
 source "$REPO_ROOT/lib/secrets.sh"
 
-# Bitwarden item naming: dotforge-ssh-<profile>
+# All keys live as attachments on a single Bitwarden item per profile.
 ITEM="dotforge-ssh-$PROFILE"
-KEY_BASENAME="id_ed25519_$PROFILE"
-KEY_PATH="$HOME/.ssh/$KEY_BASENAME"
-PUB_PATH="$KEY_PATH.pub"
 
-# Skip if both files already present and non-empty
-if [[ -s "$KEY_PATH" && -s "$PUB_PATH" ]]; then
-    log_ok "SSH keys for profile '$PROFILE' already in place"
+# Key basenames per profile (private + .pub auto-derived).
+{{ if eq .profile "personal" -}}
+KEY_BASENAMES=(
+    id_ed25519_github_booroman
+    id_ed25519
+    id_ed25519_ident_tg_bot
+    id_rsa
+    id_rsa_pureboard
+)
+{{ else if eq .profile "work" -}}
+KEY_BASENAMES=(
+    id_ed25519_work
+)
+{{- end }}
+
+# Skip entirely if every key (and its .pub) is already present and non-empty.
+all_present=true
+for basename in "${KEY_BASENAMES[@]}"; do
+    if [[ ! -s "$HOME/.ssh/$basename" || ! -s "$HOME/.ssh/$basename.pub" ]]; then
+        all_present=false
+        break
+    fi
+done
+if $all_present; then
+    log_ok "All SSH keys for profile '$PROFILE' already in place"
     exit 0
 fi
 
-log_info "Restoring SSH keys for profile '$PROFILE' from Bitwarden..."
+log_info "Restoring SSH keys for profile '$PROFILE' from Bitwarden item '$ITEM'..."
 
 bw_ensure_unlocked || {
     log_error "Cannot unlock Bitwarden — skipping SSH key restore."
@@ -36,25 +55,43 @@ bw_ensure_unlocked || {
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 
-# Clean up partial files if any download fails — a half-restored key pair
-# (e.g. private key present but public missing) silently breaks ssh auth.
+# Track files we create in this run so cleanup-on-error only removes our own
+# partial writes (never the user's pre-existing keys).
+declare -a CREATED_FILES=()
 cleanup_partial() {
-    rm -f "$KEY_PATH" "$PUB_PATH"
+    # Guard against `set -u` on empty arrays (bash 5.x raises unbound).
+    [[ ${#CREATED_FILES[@]} -eq 0 ]] && return
+    for f in "${CREATED_FILES[@]}"; do
+        rm -f "$f"
+    done
 }
 trap cleanup_partial ERR
 
-bw_get_attachment "$KEY_BASENAME" "$ITEM" "$KEY_PATH" || {
-    log_error "Failed to fetch private key from Bitwarden item '$ITEM'"
-    exit 1
-}
-bw_get_attachment "$KEY_BASENAME.pub" "$ITEM" "$PUB_PATH" || {
-    log_error "Failed to fetch public key"
-    exit 1
-}
+for basename in "${KEY_BASENAMES[@]}"; do
+    KEY_PATH="$HOME/.ssh/$basename"
+    PUB_PATH="$KEY_PATH.pub"
+
+    if [[ -s "$KEY_PATH" && -s "$PUB_PATH" ]]; then
+        log_ok "$basename already present"
+        continue
+    fi
+
+    bw_get_attachment "$basename" "$ITEM" "$KEY_PATH" || {
+        log_error "Failed to fetch private key '$basename' from Bitwarden item '$ITEM'"
+        exit 1
+    }
+    CREATED_FILES+=("$KEY_PATH")
+
+    bw_get_attachment "$basename.pub" "$ITEM" "$PUB_PATH" || {
+        log_error "Failed to fetch public key '$basename.pub'"
+        exit 1
+    }
+    CREATED_FILES+=("$PUB_PATH")
+
+    chmod 600 "$KEY_PATH"
+    chmod 644 "$PUB_PATH"
+    log_ok "Restored: $basename"
+done
 
 trap - ERR
-
-chmod 600 "$KEY_PATH"
-chmod 644 "$PUB_PATH"
-
-log_ok "SSH keys restored: $KEY_PATH"
+log_ok "SSH keys restored for profile '$PROFILE'"

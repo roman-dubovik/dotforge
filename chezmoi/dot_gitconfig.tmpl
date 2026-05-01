@@ -1,28 +1,11 @@
 [user]
-    name = Roman Dubovik
-{{ if eq .profile "personal" -}}
-    email = ip.romandubovik@gmail.com
-{{- else if eq .profile "work" -}}
-    email = roman@work-domain.example
-{{- end }}
-
-[init]
-    defaultBranch = main
-
-[pull]
-    rebase = true
-
+	name = Roman Dubovik
+	email = {{ if eq .profile "personal" }}booroman@gmail.com{{ else if eq .profile "work" }}roman@work-domain.example{{ end }}
+[color]
+	ui = auto
 [core]
-    editor = code --wait
-    excludesfile = ~/.gitignore_global
-
-[alias]
-    st = status
-    co = checkout
-    br = branch
-    ci = commit
-    lg = log --oneline --graph --decorate
-
-[push]
-    default = current
-    autoSetupRemote = true
+	editor = nano
+[credential]
+	helper = store
+[pull]
+	ff = only

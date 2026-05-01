@@ -1,29 +1,16 @@
-# Common
-Host *
-    AddKeysToAgent yes
-    UseKeychain yes
-    IgnoreUnknown UseKeychain
-
-{{ if eq .profile "personal" -}}
-Host github.com
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/id_ed25519_personal
-    IdentitiesOnly yes
-
-Host gitlab.com
-    HostName gitlab.com
-    User git
-    IdentityFile ~/.ssh/id_ed25519_personal
-    IdentitiesOnly yes
-{{- end }}
-
-{{ if eq .profile "work" -}}
-Host github.com
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/id_ed25519_work
-    IdentitiesOnly yes
-
-# Add work-specific hosts via `dot pull` later.
+{{- if eq .profile "personal" -}}
+Host github
+  HostName github.com
+  User git
+  AddKeysToAgent yes
+  IdentityFile ~/.ssh/id_ed25519_github_booroman
+  IdentitiesOnly yes
+{{- else if eq .profile "work" -}}
+# Work-specific Host blocks go here.
+# Example:
+# Host github.com
+#     HostName github.com
+#     User git
+#     IdentityFile ~/.ssh/id_ed25519_work
+#     IdentitiesOnly yes
 {{- end }}
