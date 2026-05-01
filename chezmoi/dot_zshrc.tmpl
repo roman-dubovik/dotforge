@@ -1,0 +1,39 @@
+# Path
+export PATH="$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:$PATH"
+
+# History
+HISTSIZE=10000
+SAVEHIST=10000
+HISTFILE=~/.zsh_history
+setopt HIST_IGNORE_DUPS
+setopt SHARE_HISTORY
+
+# Aliases (shared)
+alias ll='eza -la --git'
+alias ls='eza'
+alias cat='bat'
+alias g='git'
+alias k='kubectl'
+
+# fzf
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# Starship prompt
+eval "$(starship init zsh)"
+
+# fnm (Node)
+eval "$(fnm env --use-on-cd)"
+
+# pyenv
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+
+{{ if eq .profile "work" -}}
+# ── Work-only ──
+# (placeholder for work-specific configs; add via `dot pull` later)
+{{- end }}
+
+{{ if eq .profile "personal" -}}
+# ── Personal-only ──
+{{- end }}
