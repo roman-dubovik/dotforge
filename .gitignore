@@ -1,0 +1,8 @@
+# Local-only files
+.DS_Store
+*.swp
+*~
+
+# Temp from snapshot operations
+/tmp/
+*.snap
