@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Pull SSH keys from Bitwarden for the active profile.
+# version: ssh-keys-v1 {{ .profile }}
+
+set -euo pipefail
+
+PROFILE="{{ .profile }}"
+SOURCE_PATH="$(chezmoi source-path 2>/dev/null || echo "$HOME/.local/share/chezmoi")"
+REPO_ROOT="${SOURCE_PATH%/chezmoi}"
+
+# shellcheck source=/dev/null
+source "$REPO_ROOT/lib/log.sh"
+# shellcheck source=/dev/null
+source "$REPO_ROOT/lib/secrets.sh"
+
+# Bitwarden item naming: dotforge-ssh-<profile>
+ITEM="dotforge-ssh-$PROFILE"
+KEY_BASENAME="id_ed25519_$PROFILE"
+KEY_PATH="$HOME/.ssh/$KEY_BASENAME"
+PUB_PATH="$KEY_PATH.pub"
+
+# Skip if both files already present and non-empty
+if [[ -s "$KEY_PATH" && -s "$PUB_PATH" ]]; then
+    log_ok "SSH keys for profile '$PROFILE' already in place"
+    exit 0
+fi
+
+log_info "Restoring SSH keys for profile '$PROFILE' from Bitwarden..."
+
+bw_ensure_unlocked || {
+    log_error "Cannot unlock Bitwarden — skipping SSH key restore."
+    log_warn "Run 'chezmoi apply' again after 'bw unlock' to restore keys."
+    exit 0
+}
+
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+
+bw_get_attachment "$KEY_BASENAME" "$ITEM" "$KEY_PATH" || {
+    log_error "Failed to fetch private key from Bitwarden item '$ITEM'"
+    exit 1
+}
+bw_get_attachment "$KEY_BASENAME.pub" "$ITEM" "$PUB_PATH" || {
+    log_error "Failed to fetch public key"
+    exit 1
+}
+
+chmod 600 "$KEY_PATH"
+chmod 644 "$PUB_PATH"
+
+log_ok "SSH keys restored: $KEY_PATH"
