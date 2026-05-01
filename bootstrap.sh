@@ -249,28 +249,39 @@ bw_is_unlocked() {
 # personalize-fork.sh helper to find/replace user-specific strings and
 # (optionally) create the user's own GitHub repo + push.
 cmd_fork() {
-    say "Creating a personalized fork of $REPO"
+    gum style --foreground 212 --bold --margin "1 0" "dotforge — make your own"
+    gum style --foreground 245 \
+"This will clone $REPO into a directory you choose, then walk you through" \
+"personalizing it for your GitHub account, name, and email. At the end the" \
+"script will offer to create the new repo on GitHub and push." \
+"" \
+"You'll be asked for confirmation at every important step." \
+"Nothing is pushed remotely until you say yes."
 
     local default_dir="$HOME/Documents/Projects/dotforge-mine"
     local target_dir
-    target_dir="$(gum input --prompt "Target directory: " --value "$default_dir")"
+    target_dir="$(gum input --prompt "Target directory for the clone: " --value "$default_dir")"
     [[ -z "$target_dir" ]] && err "Target directory required"
 
     if [[ -e "$target_dir" ]]; then
-        if gum confirm --default=No "$target_dir already exists. Remove it and re-clone?"; then
+        gum style --foreground 220 "  ! $target_dir already exists."
+        if gum confirm --default=No "Remove it and re-clone? (irreversible)"; then
             rm -rf "$target_dir"
+            ok "Removed $target_dir"
         else
-            err "Aborted (existing path)."
+            err "Aborted (path already exists)."
         fi
     fi
 
-    say "Cloning $REPO_URL → $target_dir"
+    gum style --foreground 212 --bold "→ Cloning"
+    gum style --foreground 245 "  $REPO_URL.git  →  $target_dir"
     git clone --depth=1 "$REPO_URL.git" "$target_dir"
+    ok "Cloned."
 
-    # Run the personalize script in the cloned dir; it handles the rest.
+    # Hand off to the personalize script. All remaining args propagate so
+    # callers can pre-fill (--gh-user, --name, --email, etc.) and skip
+    # those prompts.
     bash "$target_dir/scripts/personalize-fork.sh" "$@"
-
-    ok "Fork complete. Your repo is in $target_dir"
 }
 
 # ── Subcommand: browse ──
