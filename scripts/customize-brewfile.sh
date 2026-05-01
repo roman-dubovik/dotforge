@@ -96,6 +96,76 @@ count_items() {
     grep -cE '^[[:space:]]*(brew|cask|tap|mas)[[:space:]]+' "$f" || true
 }
 
+# Show first 3 entry names (without `brew "..."` syntax) as a one-line hint.
+peek_items() {
+    local f="$1" hint
+    hint="$(grep -E '^[[:space:]]*(brew|cask|mas)[[:space:]]+' "$f" \
+        | head -3 \
+        | sed -E 's/^[[:space:]]*(brew|cask|mas)[[:space:]]+"([^"]+)".*/\2/' \
+        | tr '\n' ',' | sed 's/,$//' | sed 's/,/, /g')"
+    if [[ "$(grep -cE '^[[:space:]]*(brew|cask|mas)[[:space:]]+' "$f")" -gt 3 ]]; then
+        hint="$hint, …"
+    fi
+    printf "%s" "$hint"
+}
+
+# Cache of "name|description" lines, lazily populated.
+DESC_CACHE="$TMPDIR_LOCAL/desc.txt"
+: > "$DESC_CACHE"
+
+build_desc_cache() {
+    local formulas=() casks=()
+    local f
+    for f in "${SECTION_FILES[@]}"; do
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^[[:space:]]*brew[[:space:]]+\"([^\"]+)\" ]]; then
+                formulas+=("${BASH_REMATCH[1]}")
+            elif [[ "$line" =~ ^[[:space:]]*cask[[:space:]]+\"([^\"]+)\" ]]; then
+                casks+=("${BASH_REMATCH[1]}")
+            fi
+        done < "$f"
+    done
+    if (( ${#formulas[@]} > 0 )); then
+        brew desc --formula "${formulas[@]}" 2>/dev/null \
+            | sed -E 's/^([^:]+): /F\|\1\|/' >> "$DESC_CACHE" || true
+    fi
+    if (( ${#casks[@]} > 0 )); then
+        brew desc --cask "${casks[@]}" 2>/dev/null \
+            | sed -E 's/^([^:]+): /C\|\1\|/' >> "$DESC_CACHE" || true
+    fi
+}
+
+# Lookup: given a Brewfile line, return its description annotation.
+desc_for_line() {
+    local line="$1" name prefix
+    if [[ "$line" =~ ^[[:space:]]*brew[[:space:]]+\"([^\"]+)\" ]]; then
+        name="${BASH_REMATCH[1]}"; prefix="F"
+    elif [[ "$line" =~ ^[[:space:]]*cask[[:space:]]+\"([^\"]+)\" ]]; then
+        name="${BASH_REMATCH[1]}"; prefix="C"
+    else
+        return 0
+    fi
+    grep -F "${prefix}|${name}|" "$DESC_CACHE" | head -1 | cut -d'|' -f3-
+}
+
+# Render a section file with an inline description comment per entry.
+render_with_descriptions() {
+    local f="$1"
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*(brew|cask)[[:space:]]+\" ]]; then
+            local d
+            d="$(desc_for_line "$line")"
+            if [[ -n "$d" ]]; then
+                printf "%-50s # %s\n" "$line" "$d"
+            else
+                printf "%s\n" "$line"
+            fi
+        else
+            printf "%s\n" "$line"
+        fi
+    done < "$f"
+}
+
 # Returns the index of $1 in SECTION_NAMES, or -1.
 section_index() {
     local target="$1" i=0
@@ -188,7 +258,7 @@ SELECTED=("${TMP_VALID[@]}")
 # ── Step 2: fine-tune (always for custom; offered for the others) ──
 
 refine_selection() {
-    # Show the menu with " (N items, INC|EXC)" suffix; user toggles.
+    # Show the menu with " (N items: x, y, z, …)" suffix; user toggles via space.
     # gum choose --selected works on the *option strings*, not the option index,
     # so we pre-select option strings that match currently-included sections.
     local options=() selected_csv=""
@@ -196,9 +266,15 @@ refine_selection() {
     for name in "${SECTION_NAMES[@]}"; do
         local idx
         idx="$(section_index "$name")"
-        local n_items
+        local n_items hint
         n_items="$(count_items "${SECTION_FILES[$idx]}")"
-        local opt="$name ($n_items items)"
+        hint="$(peek_items "${SECTION_FILES[$idx]}")"
+        local opt
+        if [[ -n "$hint" ]]; then
+            opt="$name ($n_items items: $hint)"
+        else
+            opt="$name ($n_items items)"
+        fi
         options+=("$opt")
         if printf '%s\n' "${SELECTED[@]}" | grep -qFx "$name"; then
             if (( first_selected == 1 )); then
@@ -225,6 +301,11 @@ refine_selection() {
 }
 
 if (( INTERACTIVE == 1 )); then
+    # Pre-fetch descriptions once (slow on cold cache; ~3-5s). Used by both the
+    # multi-select hint and the pager preview.
+    echo "→ Fetching package descriptions..."
+    build_desc_cache
+
     if [[ "$ARCHETYPE" == "custom" ]] \
         || gum confirm --default=No "Fine-tune the section selection for archetype '$ARCHETYPE'?"; then
         refine_selection
@@ -232,12 +313,12 @@ if (( INTERACTIVE == 1 )); then
 
     # ── Step 3: preview loop ──
     if (( ${#SELECTED[@]} > 0 )); then
-        while gum confirm --default=No "Preview a section before installing?"; do
+        while gum confirm --default=No "Preview a section (with descriptions) before installing?"; do
             local_choice="$(printf "%s\n" "${SELECTED[@]}" | gum choose --header "Section to preview:")"
             [[ -z "$local_choice" ]] && break
             idx="$(section_index "$local_choice")"
             if [[ "$idx" -ge 0 ]]; then
-                gum pager < "${SECTION_FILES[$idx]}"
+                render_with_descriptions "${SECTION_FILES[$idx]}" | gum pager
             fi
         done
     fi

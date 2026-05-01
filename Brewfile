@@ -23,7 +23,7 @@ brew "gnu-sed"
 brew "mas"           # Mac App Store CLI (used below)
 brew "parallel"
 brew "pv"
-brew "sshpass"       # via hudochenkov/sshpass tap
+brew "hudochenkov/sshpass/sshpass"  # via tap (use full form so brew bundle dump matches)
 
 # ── Bootstrap deps ──
 brew "chezmoi"
@@ -46,7 +46,7 @@ brew "rust"
 brew "awscli"
 brew "k6"
 brew "libpq"
-brew "supabase"      # via supabase/tap
+brew "supabase/tap/supabase"  # via tap (use full form so brew bundle dump matches)
 brew "gemini-cli"
 
 # ── Media / docs ──

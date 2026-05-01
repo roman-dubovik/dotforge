@@ -10,15 +10,16 @@ End-to-end usage and operations reference for the
 3. [What the bootstrap does](#what-the-bootstrap-does)
 4. [Interactivity](#interactivity)
 5. [Customizing the Brewfile](#customizing-the-brewfile)
-6. [Profiles](#profiles)
-7. [Daily operations](#daily-operations)
-8. [Adding or rotating SSH keys](#adding-or-rotating-ssh-keys)
-9. [Editing dotfiles](#editing-dotfiles)
-10. [Managing Bitwarden secrets](#managing-bitwarden-secrets)
-11. [Repository layout](#repository-layout)
-12. [chezmoi naming conventions](#chezmoi-naming-conventions)
-13. [Troubleshooting](#troubleshooting)
-14. [What is not yet covered](#what-is-not-yet-covered)
+6. [Promoting machine extras back into the canonical Brewfile](#promoting-machine-extras-back-into-the-canonical-brewfile)
+7. [Profiles](#profiles)
+8. [Daily operations](#daily-operations)
+9. [Adding or rotating SSH keys](#adding-or-rotating-ssh-keys)
+10. [Editing dotfiles](#editing-dotfiles)
+11. [Managing Bitwarden secrets](#managing-bitwarden-secrets)
+12. [Repository layout](#repository-layout)
+13. [chezmoi naming conventions](#chezmoi-naming-conventions)
+14. [Troubleshooting](#troubleshooting)
+15. [What is not yet covered](#what-is-not-yet-covered)
 
 ---
 
@@ -237,6 +238,104 @@ sections (Plan 1):
 
 The trailing `# ── Manual install ──` block is informational comments only
 and is never written to `Brewfile.local`.
+
+---
+
+## Promoting machine extras back into the canonical Brewfile
+
+The other half of "is this machine in sync?" is the *opposite* direction:
+you've installed something on a work Mac (Slack, JetBrains IDE, …) that
+isn't in the canonical Brewfile, and you want to lift it back so other
+machines pick it up on the next `chezmoi update`.
+`scripts/sync-brewfile.sh` does this.
+
+### What it does
+
+1. Runs `brew bundle dump` to capture every brew/cask/mas/vscode entry
+   currently registered with brew on this machine.
+2. Reads the tracked Brewfiles (canonical `Brewfile`, plus `Brewfile.local`
+   if you have one).
+3. Reports two diffs:
+   - **Extras** — installed locally, not in any tracked Brewfile.
+   - **Missing** — listed in the Brewfile but not actually installed
+     (advisory; the script does not auto-install or auto-remove).
+4. For each extra, prompts you (`gum choose`) to promote to:
+   - `canonical` — appended to `Brewfile` for everyone, headed by a
+     "Promoted from sync-brewfile.sh" marker. You can move them into
+     proper `# ── Section ──` headers before committing.
+   - `local` — appended to `Brewfile.local` (gitignored, this machine only).
+   - `ignore` — skip (it will reappear on the next sync).
+5. After promotion, shows `git diff Brewfile` and offers to stage + commit
+   in one step. Push manually when ready.
+
+The interactive prompts include each package's description from
+`brew desc` (pre-fetched in batch on script start) so you can decide
+without alt-tabbing to a browser.
+
+### Run it
+
+```bash
+~/.local/share/chezmoi/scripts/sync-brewfile.sh
+```
+
+Read-only diff (no prompts, no changes):
+
+```bash
+~/.local/share/chezmoi/scripts/sync-brewfile.sh --check
+```
+
+Skip noisy categories on a deeply-customized machine:
+
+```bash
+~/.local/share/chezmoi/scripts/sync-brewfile.sh --skip-vscode --skip-mas
+```
+
+Available flags: `--skip-vscode`, `--skip-mas`, `--skip-tap`, `--check`,
+`--non-interactive`, `--brewfile <path>`, `--local <path>`.
+
+### Typical work-Mac flow
+
+```bash
+# 1. Bootstrap a work Mac (gets canonical Brewfile + maybe Brewfile.local)
+curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash
+
+# 2. Use the machine. Install Slack/JetBrains/etc. via brew install --cask
+brew install --cask slack jetbrains-toolbox
+
+# 3. Sync: promote the things you'd want on every machine
+~/.local/share/chezmoi/scripts/sync-brewfile.sh
+# → answers: slack=canonical, jetbrains-toolbox=canonical
+# → script appends them to Brewfile, commits, prints "git push when ready"
+
+git -C ~/.local/share/chezmoi push
+```
+
+### Caveats
+
+- Apps installed by drag-and-drop into `/Applications` aren't seen by
+  `brew bundle dump`. To bring them under brew tracking first:
+  `brew install --cask --adopt <name>`. The Adopt flag registers an
+  existing app without reinstalling.
+- The "Missing" section may be long on this machine because many casks
+  in the canonical Brewfile correspond to apps you installed manually
+  before adopting them. Either `brew install --cask --adopt` them or
+  remove the Brewfile entry.
+- VS Code extensions show up by default. If you don't want to manage
+  them via Brewfile, pass `--skip-vscode`.
+
+### Where it appends
+
+Promoted entries land at the end of the target file, under a header like:
+
+```
+# ── Promoted from sync-brewfile.sh on 2026-05-02 14:30 (canonical) ──
+# Move these into the proper section headers above before committing.
+cask "slack"
+cask "jetbrains-toolbox"
+```
+
+Do this housekeeping before pushing — it keeps the canonical Brewfile
+organized.
 
 ---
 
@@ -471,6 +570,7 @@ across `bw` versions and mocking.
 ├── bootstrap.sh                 # the one-command-bootstrap entry
 ├── scripts/
 │   ├── customize-brewfile.sh    # interactive Brewfile customizer (writes Brewfile.local)
+│   ├── sync-brewfile.sh         # diff + promote machine extras back to Brewfile
 │   └── seed-bitwarden-ssh-keys.sh   # one-shot helper to populate Bitwarden
 ├── lib/
 │   ├── log.sh                   # info/ok/warn/error/step/section helpers
