@@ -1,0 +1,25 @@
+# Files / dirs under target paths that chezmoi should NOT manage.
+# Pattern syntax is gitignore-like, paths are relative to $HOME.
+# Without these, `chezmoi diff` would constantly nag about local-only state.
+
+# ── ~/.claude — managed parts: CLAUDE.md, skills/, settings.json, plugins/ ──
+# Everything below is local cache / state / per-machine logs that should not
+# travel between Macs.
+.claude/.claude.json
+.claude/.claude.json.*
+.claude/.mcp.json
+.claude/backups
+.claude/cache
+.claude/debug
+.claude/downloads
+.claude/file-history
+.claude/history.jsonl
+.claude/ide
+.claude/mcp-needs-auth-cache.json
+.claude/paste-cache
+.claude/plans
+.claude/projects
+.claude/security_warnings_state_*.json
+.claude/statsig
+.claude/todos
+.claude/statusline-command.sh
