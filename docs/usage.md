@@ -11,16 +11,17 @@ End-to-end usage and operations reference for the
 4. [Interactivity](#interactivity)
 5. [Customizing the Brewfile](#customizing-the-brewfile)
 6. [Promoting machine extras back into the canonical Brewfile](#promoting-machine-extras-back-into-the-canonical-brewfile)
-7. [Forking this repo for yourself](#forking-this-repo-for-yourself)
-8. [Profiles](#profiles)
-9. [Daily operations](#daily-operations)
-10. [Adding or rotating SSH keys](#adding-or-rotating-ssh-keys)
-11. [Editing dotfiles](#editing-dotfiles)
-12. [Managing Bitwarden secrets](#managing-bitwarden-secrets)
-13. [Repository layout](#repository-layout)
-14. [chezmoi naming conventions](#chezmoi-naming-conventions)
-15. [Troubleshooting](#troubleshooting)
-16. [What is not yet covered](#what-is-not-yet-covered)
+7. [CLI globals (npm, pnpm, cargo, go, pip)](#cli-globals-npm-pnpm-cargo-go-pip)
+8. [Forking this repo for yourself](#forking-this-repo-for-yourself)
+9. [Profiles](#profiles)
+10. [Daily operations](#daily-operations)
+11. [Adding or rotating SSH keys](#adding-or-rotating-ssh-keys)
+12. [Editing dotfiles](#editing-dotfiles)
+13. [Managing Bitwarden secrets](#managing-bitwarden-secrets)
+14. [Repository layout](#repository-layout)
+15. [chezmoi naming conventions](#chezmoi-naming-conventions)
+16. [Troubleshooting](#troubleshooting)
+17. [What is not yet covered](#what-is-not-yet-covered)
 
 ---
 
@@ -39,9 +40,10 @@ CLT, Homebrew, gum), then shows a top-level menu:
 What would you like to do?
   > setup     — Set up this Mac (full bootstrap)
     update    — Pull latest dotfiles from remote and re-apply
-    sync      — Promote local extras into the canonical Brewfile
+    sync      — Promote local extras (brew + /Applications) into Brewfile
     customize — Re-pick which Brewfile sections to install
     add-key   — Upload a new SSH key to Bitwarden (profile or machine scope)
+    scan-cli  — Classify everything in PATH; capture CLI globals
     fork      — Make your own dotforge for a different GitHub account
     browse    — Read-only walkthrough of what's available
     exit      — Quit
@@ -78,6 +80,8 @@ bootstrap.sh update                  # chezmoi update + apply
 bootstrap.sh sync                    # run scripts/sync-brewfile.sh
 bootstrap.sh customize               # run scripts/customize-brewfile.sh
 bootstrap.sh add-key id_ed25519_x    # upload an SSH key to Bitwarden
+bootstrap.sh scan-cli                # PATH classifier (brew/npm/pnpm/...)
+bootstrap.sh scan-cli --capture      # write cli-globals.txt for replay on fresh Mac
 bootstrap.sh fork --gh-user friend   # clone+personalize for another account
 bootstrap.sh browse                  # read-only walkthrough
 bootstrap.sh --help                  # show this list
@@ -497,6 +501,87 @@ git push
 
 ---
 
+## CLI globals (npm, pnpm, cargo, go, pip)
+
+The Brewfile only covers things Homebrew can install. CLI tools that come
+from a language-specific package manager (npm / pnpm / cargo / go / pip)
+or from a curl-installed binary won't reach a fresh Mac through `setup`
+alone. `scripts/scan-cli.sh` walks every directory in `$PATH`, classifies
+each executable by install source, and (with `--capture`) writes a
+`cli-globals.txt` the bootstrap can replay on a new machine.
+
+### Categories
+
+When you run `bootstrap.sh scan-cli` (or `./scripts/scan-cli.sh`) it
+classifies every binary in PATH as one of:
+
+| Category | What it is |
+|---|---|
+| `system` | macOS-bundled (`/usr/bin`, `/bin`, `/sbin`, `/System/*`) |
+| `xcode` | Xcode Command Line Tools (`/Library/Developer/CommandLineTools/...`) |
+| `brew` | Homebrew formula (`$(brew --prefix)/bin`, `Cellar/*`, `opt/*`) |
+| `cask` | Cask CLI shim (`$(brew --prefix)/Caskroom/*`) |
+| `npm` | npm global under nvm (`~/.nvm/versions/node/*/bin`) |
+| `pnpm` | pnpm global (`~/Library/pnpm` or `$PNPM_HOME`) |
+| `cargo` | Rust crate (`~/.cargo/bin`) |
+| `go` | Go binary (`$GOBIN` or `$GOPATH/bin` or `~/go/bin`) |
+| `pip` | Python user package (`~/.local/bin`, pyenv user-base) |
+| `thirdparty` | `/usr/local/bin` (cask helpers like Docker's `kubectl`, or hand-installed) |
+| `uncategorized` | Everything else — typically curl-installed tools (e.g. `~/.maestro/bin`) |
+
+### Capturing globals for replay
+
+```bash
+bootstrap.sh scan-cli --capture
+```
+
+Writes `cli-globals.txt` with lines like:
+
+```
+npm:typescript
+npm:typescript-language-server
+npm:ts-node
+pnpm:eslint_d
+cargo:zoxide
+```
+
+Commit + push it. The chezmoi hook
+`run_onchange_30-install-cli-globals.sh` runs on the next `chezmoi
+apply` (or `bootstrap.sh update`) on any machine and replays the file:
+
+- `npm install -g <pkg>` for each `npm:` line (skipped if `npm` isn't on
+  PATH; install nvm first)
+- `pnpm add -g <pkg>` for each `pnpm:` line
+- `cargo install <crate>` for each `cargo:` line (idempotent: skipped if
+  already installed)
+- `pip3 install --user <pkg>` for each `pip:` line
+- `go:` lines are reported but not auto-installed — Go needs full module
+  paths, which the binary name alone doesn't reveal
+
+The hook is idempotent — already-installed packages are skipped quietly.
+Failures are logged but don't abort the run.
+
+### What's NOT auto-captured
+
+- **curl-installed binaries** (e.g. `~/.maestro/bin/maestro`,
+  `~/.cargo/bin/rustup`'s installer) — these install themselves into
+  custom dirs via their own `curl ... | sh`. Listed under
+  `# ── Manual install ──` at the bottom of `Brewfile` with their source
+  URLs.
+- **App-bundled CLIs** (Docker's `kubectl`, Tailscale's `tailscale`) —
+  these come with the corresponding cask. Once you `brew install --cask
+  --adopt <name>` (suggested by `bootstrap.sh sync`), the cask installer
+  will also place the CLI.
+
+### Inspect without capturing
+
+```bash
+bootstrap.sh scan-cli --uncategorized   # only the uncategorized list
+bootstrap.sh scan-cli --json            # machine-readable
+```
+
+---
+
 ## Profiles
 
 `profile` is a single string (`personal` or `work`) that gates conditional
@@ -787,6 +872,7 @@ across `bw` versions and mocking.
 ├── scripts/
 │   ├── customize-brewfile.sh    # interactive Brewfile customizer (writes Brewfile.local)
 │   ├── sync-brewfile.sh         # diff + promote machine extras back to Brewfile
+│   ├── scan-cli.sh              # classify every PATH binary; capture CLI globals
 │   ├── add-ssh-key.sh           # upload an SSH key to Bitwarden (profile or machine scope)
 │   ├── personalize-fork.sh      # rewrite hardcoded user strings + push to your own gh
 │   └── seed-bitwarden-ssh-keys.sh   # legacy one-shot bulk SSH-key seeder
