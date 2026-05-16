@@ -100,27 +100,50 @@ log_section "Health delta"
 # Output: "<STATUS> <label>" — one line per status line, status is OK/WARN/FAIL.
 extract_status_labels() {
     local file="$1"
-    # Match lines starting with [OK], [WARN], or [FAIL] (with optional trailing spaces).
-    grep -E '^\[(OK|WARN|FAIL)\]' "$file" | \
-        sed -E 's/^\[([A-Z]+)\][[:space:]]+([^[:space:]].{0,21}[^[:space:]]?)[[:space:]].*/\1 \2/' | \
-        sed -E 's/^\[([A-Z]+)\][[:space:]]+([^[:space:]]+)[[:space:]]*$/\1 \2/' || true
+    # Match lines starting with [OK], [WARN], or [FAIL].
+    # Output: "<STATUS> <first-token-of-label>" — one line per status line.
+    grep -E '^\[(OK|WARN|FAIL)\]' "$file" \
+        | sed -E 's/^\[([A-Z]+)\][[:space:]]+([^[:space:]]+).*/\1 \2/' \
+        || true
 }
 
-# Build associative arrays: label -> status (before and after)
-declare -A BEFORE_STATUS
-declare -A AFTER_STATUS
+# Build parallel indexed arrays: label -> status (before and after).
+# bash 3.2 compat — no declare -A.
+BEFORE_LABELS=()  BEFORE_STATUSES=()
+AFTER_LABELS=()   AFTER_STATUSES=()
 
 while IFS= read -r line; do
-    status="${line%% *}"
-    label="${line#* }"
-    BEFORE_STATUS["$label"]="$status"
+    BEFORE_STATUSES+=("${line%% *}")
+    BEFORE_LABELS+=("${line#* }")
 done < <(extract_status_labels "$BEFORE")
 
 while IFS= read -r line; do
-    status="${line%% *}"
-    label="${line#* }"
-    AFTER_STATUS["$label"]="$status"
+    AFTER_STATUSES+=("${line%% *}")
+    AFTER_LABELS+=("${line#* }")
 done < <(extract_status_labels "$AFTER")
+
+# Lookup helpers — iterate own arrays directly (no eval).
+lookup_before() {
+    local target="$1" i
+    for i in "${!BEFORE_LABELS[@]}"; do
+        if [[ "${BEFORE_LABELS[$i]}" == "$target" ]]; then
+            printf "%s" "${BEFORE_STATUSES[$i]}"
+            return
+        fi
+    done
+    printf "UNKNOWN"
+}
+
+lookup_after() {
+    local target="$1" i
+    for i in "${!AFTER_LABELS[@]}"; do
+        if [[ "${AFTER_LABELS[$i]}" == "$target" ]]; then
+            printf "%s" "${AFTER_STATUSES[$i]}"
+            return
+        fi
+    done
+    printf "UNKNOWN"
+}
 
 # Determine color support (stdout is likely a tty; log.sh already set COLOR_* if sourced)
 if [[ -t 1 ]]; then
@@ -137,11 +160,9 @@ remaining_warn=0
 remaining_fail=0
 any_change=0
 
-# Collect all labels from after-state (primary view post-apply)
-declare -a ALL_LABELS
-while IFS= read -r line; do
-    ALL_LABELS+=("${line#* }")
-done < <(extract_status_labels "$AFTER")
+# Collect all labels from after-state (primary view post-apply).
+# AFTER_LABELS is already populated above — reuse it directly.
+ALL_LABELS=("${AFTER_LABELS[@]+"${AFTER_LABELS[@]}"}")
 
 printed_labels=()
 
@@ -154,8 +175,8 @@ for label in "${ALL_LABELS[@]}"; do
     [[ "$already" -eq 1 ]] && continue
     printed_labels+=("$label")
 
-    before="${BEFORE_STATUS[$label]:-UNKNOWN}"
-    after="${AFTER_STATUS[$label]:-UNKNOWN}"
+    before="$(lookup_before "$label")"
+    after="$(lookup_after "$label")"
 
     if [[ "$before" != "$after" ]]; then
         any_change=1
