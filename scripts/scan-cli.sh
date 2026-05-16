@@ -181,28 +181,31 @@ if (( CAPTURE == 1 )); then
 
         printf "\n# ── npm globals ──\n"
         if command -v npm >/dev/null 2>&1; then
-            npm ls -g --depth=0 --parseable 2>"$capture_err/npm.err" \
+            npm_rc=0
+            { npm ls -g --depth=0 --parseable 2>"$capture_err/npm.err" \
                 | awk -F'/node_modules/' 'NF>1{print "npm:"$NF}' \
-                | sort -u
-            warn_if_failed npm "${PIPESTATUS[0]}"
+                | sort -u; } || npm_rc=${PIPESTATUS[0]}
+            warn_if_failed npm "$npm_rc"
         fi
 
         printf "\n# ── pnpm globals ──\n"
         if command -v pnpm >/dev/null 2>&1; then
             # Split on /node_modules/ (not /) so scoped names like
             # @nestjs/cli survive — otherwise $NF would drop the scope.
-            pnpm list -g --depth=0 --parseable 2>"$capture_err/pnpm.err" \
+            pnpm_rc=0
+            { pnpm list -g --depth=0 --parseable 2>"$capture_err/pnpm.err" \
                 | awk -F'/node_modules/' 'NF>1{print "pnpm:"$NF}' \
-                | sort -u
-            warn_if_failed pnpm "${PIPESTATUS[0]}"
+                | sort -u; } || pnpm_rc=${PIPESTATUS[0]}
+            warn_if_failed pnpm "$pnpm_rc"
         fi
 
         printf "\n# ── cargo crates ──\n"
         if command -v cargo >/dev/null 2>&1; then
-            cargo install --list 2>"$capture_err/cargo.err" \
+            cargo_rc=0
+            { cargo install --list 2>"$capture_err/cargo.err" \
                 | awk '/^[a-zA-Z]/ {print "cargo:" $1}' \
-                | sort -u
-            warn_if_failed cargo "${PIPESTATUS[0]}"
+                | sort -u; } || cargo_rc=${PIPESTATUS[0]}
+            warn_if_failed cargo "$cargo_rc"
         fi
 
         printf "\n# ── go binaries ──\n"
@@ -213,15 +216,19 @@ if (( CAPTURE == 1 )); then
 
         printf "\n# ── pip user packages ──\n"
         if command -v pip3 >/dev/null 2>&1; then
-            pip3 list --user --format=freeze 2>"$capture_err/pip.err" \
+            pip_rc=0
+            { pip3 list --user --format=freeze 2>"$capture_err/pip.err" \
                 | awk -F'==' '{print "pip:" $1}' \
-                | sort -u
-            warn_if_failed pip "${PIPESTATUS[0]}"
+                | sort -u; } || pip_rc=${PIPESTATUS[0]}
+            warn_if_failed pip "$pip_rc"
         fi
     } > "$OUTPUT"
 
     n_captured="$(grep -cE '^(npm|pnpm|cargo|go|pip):' "$OUTPUT" 2>/dev/null || true)"
     [[ -z "$n_captured" ]] && n_captured=0
+    if [[ "$n_captured" -eq 0 ]]; then
+        echo "  ⚠ No global packages captured — verify npm/pnpm/cargo/go/pip are on PATH (e.g. nvm loaded)." >&2
+    fi
     echo "✓ Captured $n_captured global package(s)"
     echo ""
     echo "  Review:  cat $OUTPUT"
