@@ -10,6 +10,7 @@
 #   bootstrap.sh customize   # re-pick Brewfile sections
 #   bootstrap.sh add-key     # upload SSH keys to Bitwarden (bulk or single)
 #   bootstrap.sh scan-cli    # classify everything in PATH; capture globals
+#   bootstrap.sh scan-macos  # print current macOS defaults as defaults write commands
 #   bootstrap.sh fork        # clone+personalize this repo under your own GitHub
 #   bootstrap.sh browse      # read-only walkthrough
 
@@ -118,6 +119,7 @@ show_main_menu() {
         "customize — Re-pick which Brewfile sections to install" \
         "add-key   — Upload a new SSH key to Bitwarden (profile or machine scope)" \
         "scan-cli  — Classify everything in PATH; capture CLI globals" \
+        "scan-macos — print current macOS defaults as defaults write commands" \
         "fork      — Make your own dotforge for a different GitHub account" \
         "browse    — Read-only walkthrough of what's available" \
         "exit      — Quit"
@@ -254,6 +256,17 @@ cmd_scan_cli() {
         err "Repo not cloned yet (run 'setup' first)."
     fi
     bash "$repo_root/scripts/scan-cli.sh" "$@"
+}
+
+# ── Subcommand: scan-macos ──
+
+cmd_scan_macos() {
+    local repo_root
+    repo_root="$(get_repo_root)"
+    if [[ -z "$repo_root" || ! -x "$repo_root/scripts/scan-macos-defaults.sh" ]]; then
+        err "Repo not cloned yet (run 'setup' first)."
+    fi
+    bash "$repo_root/scripts/scan-macos-defaults.sh" "$@"
 }
 
 # ── Subcommand: fork ──
@@ -435,14 +448,14 @@ main() {
 
     # If user passed a direct subcommand, validate quickly and dispatch.
     case "$subcommand" in
-        setup|update|sync|customize|add-key|scan-cli|fork|browse|"")
+        setup|update|sync|customize|add-key|scan-cli|scan-macos|fork|browse|"")
             ;;
         --help|-h|help)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *)
-            err "Unknown subcommand: $subcommand (try: setup, update, sync, customize, add-key, scan-cli, fork, browse)"
+            err "Unknown subcommand: $subcommand (try: setup, update, sync, customize, add-key, scan-cli, scan-macos, fork, browse)"
             ;;
     esac
 
@@ -471,6 +484,7 @@ main() {
         customize) install_bootstrap_deps gum;                     cmd_customize ;;
         add-key)   install_bootstrap_deps gum bitwarden-cli jq;    cmd_add_key "$@" ;;
         scan-cli)  install_bootstrap_deps gum;                     cmd_scan_cli "$@" ;;
+        scan-macos) install_bootstrap_deps gum;                    cmd_scan_macos "$@" ;;
         fork)      install_bootstrap_deps gum git;                 cmd_fork "$@" ;;
         browse)    cmd_browse ;;
         exit)      ok "Bye." ;;
