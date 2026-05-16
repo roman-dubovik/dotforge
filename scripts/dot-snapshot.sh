@@ -52,7 +52,10 @@ gum_input() {
         esac
     done
     local answer
-    read -r -p "$prompt" answer
+    # read returns non-zero on EOF/Ctrl-D — propagate as cancel signal
+    if ! read -r -p "$prompt" answer; then
+        return 1
+    fi
     printf "%s" "${answer:-$val}"
 }
 
@@ -173,7 +176,10 @@ for f in "${CAPTURED_FILES[@]}"; do
 
     printf "\n"
     if gum_confirm "Commit changes to $f?"; then
-        git -C "$REPO_ROOT" add -- "$f"
+        if ! git -C "$REPO_ROOT" add -- "$f"; then
+            log_error "[dot snapshot] git add failed for $f"
+            exit 1
+        fi
         log_ok "Staged: $f"
     else
         log_warn "Skipped: $f"
@@ -191,10 +197,9 @@ fi
 log_section "Commit snapshot"
 
 default_msg="snapshot: $(hostname -s) $(date +%F)"
-MSG="$(gum_input --value "$default_msg" --prompt "Commit message: ")"
-
-if [[ -z "$MSG" ]]; then
-    MSG="$default_msg"
+if ! MSG="$(gum_input --value "$default_msg" --prompt "Commit message: ")"; then
+    log_warn "Commit message input cancelled. Aborting commit."
+    exit 0
 fi
 
 git -C "$REPO_ROOT" commit -m "$MSG"
