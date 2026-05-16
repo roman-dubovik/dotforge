@@ -201,6 +201,9 @@ if ! MSG="$(gum_input --value "$default_msg" --prompt "Commit message: ")"; then
     log_warn "Commit message input cancelled. Aborting commit."
     exit 0
 fi
+if [[ -z "$MSG" ]]; then
+    MSG="$default_msg"
+fi
 
 git -C "$REPO_ROOT" commit -m "$MSG"
 log_ok "Committed: $MSG"
