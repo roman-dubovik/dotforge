@@ -12,6 +12,7 @@
 #   bootstrap.sh scan-cli    # classify everything in PATH; capture globals
 #   bootstrap.sh scan-macos      # print current macOS defaults as defaults write commands
 #   bootstrap.sh scan-autostart  # dump current login items + LaunchAgents
+#   bootstrap.sh doctor       # run diagnostic checks (read-only)
 #   bootstrap.sh fork        # clone+personalize this repo under your own GitHub
 #   bootstrap.sh browse      # read-only walkthrough
 
@@ -122,6 +123,7 @@ show_main_menu() {
         "scan-cli  — Classify everything in PATH; capture CLI globals" \
         "scan-macos    — print current macOS defaults as defaults write commands" \
         "scan-autostart — dump current login items + LaunchAgents" \
+        "doctor    — Run diagnostic checks against canonical state (read-only)" \
         "fork      — Make your own dotforge for a different GitHub account" \
         "browse    — Read-only walkthrough of what's available" \
         "exit      — Quit"
@@ -280,6 +282,17 @@ cmd_scan_autostart() {
         err "Repo not cloned yet (run 'setup' first)."
     fi
     bash "$repo_root/scripts/scan-login-autostart.sh" "$@"
+}
+
+# ── Subcommand: doctor ──
+
+cmd_doctor() {
+    local repo_root
+    repo_root="$(get_repo_root)"
+    if [[ -z "$repo_root" || ! -x "$repo_root/scripts/doctor.sh" ]]; then
+        err "Repo not cloned yet (run 'setup' first)."
+    fi
+    bash "$repo_root/scripts/doctor.sh" "$@"
 }
 
 # ── Subcommand: fork ──
@@ -461,14 +474,14 @@ main() {
 
     # If user passed a direct subcommand, validate quickly and dispatch.
     case "$subcommand" in
-        setup|update|sync|customize|add-key|scan-cli|scan-macos|scan-autostart|fork|browse|"")
+        setup|update|sync|customize|add-key|scan-cli|scan-macos|scan-autostart|doctor|fork|browse|"")
             ;;
         --help|-h|help)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *)
-            err "Unknown subcommand: $subcommand (try: setup, update, sync, customize, add-key, scan-cli, scan-macos, scan-autostart, fork, browse)"
+            err "Unknown subcommand: $subcommand (try: setup, update, sync, customize, add-key, scan-cli, scan-macos, scan-autostart, doctor, fork, browse)"
             ;;
     esac
 
@@ -499,6 +512,7 @@ main() {
         scan-cli)  install_bootstrap_deps gum;                     cmd_scan_cli "$@" ;;
         scan-macos) install_bootstrap_deps gum;                    cmd_scan_macos "$@" ;;
         scan-autostart) install_bootstrap_deps gum;               cmd_scan_autostart "$@" ;;
+        doctor)    install_bootstrap_deps gum;                     cmd_doctor "$@" ;;
         fork)      install_bootstrap_deps gum git;                 cmd_fork "$@" ;;
         browse)    cmd_browse ;;
         exit)      ok "Bye." ;;
