@@ -95,8 +95,13 @@ check_chezmoi() {
         return
     fi
 
-    local diff_out
-    diff_out="$(chezmoi diff 2>&1)" || true
+    local diff_out diff_rc
+    diff_out="$(chezmoi diff 2>/dev/null)" || diff_rc=$?
+    diff_rc="${diff_rc:-0}"
+    if [[ "$diff_rc" -ne 0 ]]; then
+        print_status FAIL "chezmoi state" "chezmoi diff failed (rc=${diff_rc}); run 'chezmoi diff' manually"
+        return
+    fi
     if [[ -z "$diff_out" ]]; then
         print_status OK "chezmoi state" "no pending changes"
     else
@@ -134,6 +139,10 @@ check_brewfile() {
         # Lines like "→ Formula/Cask X needs to be installed."
         local missing
         missing="$(printf "%s\n" "$verbose_out" | grep -c "^→ " || true)"
+        if [[ "$missing" -eq 0 ]]; then
+            print_status WARN "Brewfile" "brew bundle check failed (rc=${rc}); run manually"
+            return
+        fi
         # Collect up to 3 names for details
         local names
         names="$(printf "%s\n" "$verbose_out" \
@@ -210,7 +219,9 @@ check_cli_globals() {
                     esac
                     continue
                 fi
-                if ! npm ls -g --depth=0 --parseable 2>/dev/null | grep -qE "/${pkg}(@|$)"; then
+                local npm_listing
+                npm_listing="$(npm ls -g --depth=0 --parseable 2>/dev/null)" || true
+                if ! printf "%s\n" "$npm_listing" | grep -qE "/${pkg}(@|$)"; then
                     missing=$(( missing + 1 ))
                 fi
                 ;;
@@ -223,7 +234,9 @@ check_cli_globals() {
                     esac
                     continue
                 fi
-                if ! pnpm list -g --depth=0 --parseable 2>/dev/null | grep -qE "/${pkg}(@|$)"; then
+                local pnpm_listing
+                pnpm_listing="$(pnpm list -g --depth=0 --parseable 2>/dev/null)" || true
+                if ! printf "%s\n" "$pnpm_listing" | grep -qE "/${pkg}(@|$)"; then
                     missing=$(( missing + 1 ))
                 fi
                 ;;
@@ -264,7 +277,9 @@ check_cli_globals() {
                     esac
                     continue
                 fi
-                if ! pip3 list --user --format=freeze 2>/dev/null | grep -qiE "^${pkg}=="; then
+                local pip_listing
+                pip_listing="$(pip3 list --user --format=freeze 2>/dev/null)" || true
+                if ! printf "%s\n" "$pip_listing" | grep -qiE "^${pkg}=="; then
                     missing=$(( missing + 1 ))
                 fi
                 ;;
@@ -382,8 +397,13 @@ check_macos_defaults() {
         return
     fi
 
-    local diff_out
-    diff_out="$(bash "$scan_script" --diff 2>&1)" || true
+    local diff_out diff_rc
+    diff_out="$(bash "$scan_script" --diff 2>/dev/null)" || diff_rc=$?
+    diff_rc="${diff_rc:-0}"
+    if [[ "$diff_rc" -ne 0 ]]; then
+        print_status WARN "macOS defaults" "scan-macos-defaults.sh --diff failed (rc=${diff_rc}); run manually for details"
+        return
+    fi
 
     # Count lines that represent actual divergence:
     #  - "defaults write ..."  = key has a different value than baseline
@@ -410,8 +430,13 @@ check_login_autostart() {
         return
     fi
 
-    local diff_out
-    diff_out="$(bash "$scan_script" --diff 2>&1)" || true
+    local diff_out diff_rc
+    diff_out="$(bash "$scan_script" --diff 2>/dev/null)" || diff_rc=$?
+    diff_rc="${diff_rc:-0}"
+    if [[ "$diff_rc" -ne 0 ]]; then
+        print_status WARN "Login items" "scan-login-autostart.sh --diff failed (rc=${diff_rc}); run manually for details"
+        return
+    fi
 
     # In --diff mode, lines starting with "+ " or "- " indicate drift.
     # LaunchAgents block always prints but has no +/- lines in --diff mode.
@@ -447,12 +472,14 @@ check_repo_sync() {
     fi
 
     # Try to fetch from origin (requires network)
-    local fetch_rc
-    chezmoi git -- fetch origin >/dev/null 2>&1 || fetch_rc=$?
+    local fetch_rc fetch_err
+    fetch_err="$(chezmoi git -- fetch origin 2>&1 >/dev/null)" || fetch_rc=$?
     fetch_rc="${fetch_rc:-0}"
 
     if [[ "$fetch_rc" -ne 0 ]]; then
-        print_status WARN "Repo" "could not fetch origin (offline? git error)"
+        local detail
+        detail="$(printf "%s" "$fetch_err" | head -1)"
+        print_status WARN "Repo" "could not fetch origin — ${detail:-no detail} (run: chezmoi git -- fetch origin)"
         return
     fi
 
