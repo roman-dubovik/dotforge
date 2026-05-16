@@ -100,11 +100,18 @@ log_section "Health delta"
 # Output: "<STATUS> <label>" — one line per status line, status is OK/WARN/FAIL.
 extract_status_labels() {
     local file="$1"
-    # Match lines starting with [OK], [WARN], or [FAIL].
-    # Output: "<STATUS> <first-token-of-label>" — one line per status line.
-    grep -E '^\[(OK|WARN|FAIL)\]' "$file" \
-        | sed -E 's/^\[([A-Z]+)\][[:space:]]+([^[:space:]]+).*/\1 \2/' \
-        || true
+    local line status label
+    while IFS= read -r line; do
+        # Match [OK], [WARN], or [FAIL] at the start; skip non-status lines.
+        if [[ "$line" =~ ^\[(OK|WARN|FAIL)\] ]]; then
+            status="${BASH_REMATCH[1]}"
+            # Label is at fixed offset 7, width 22 (from doctor.sh %-6s + space + %-22s).
+            label="${line:7:22}"
+            # Strip trailing spaces from the padded label.
+            label="${label%"${label##*[![:space:]]}"}"
+            printf "%s %s\n" "$status" "$label"
+        fi
+    done < "$file"
 }
 
 # Build parallel indexed arrays: label -> status (before and after).
