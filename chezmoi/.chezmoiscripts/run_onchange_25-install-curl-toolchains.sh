@@ -24,7 +24,7 @@ ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
 # 1. oh-my-zsh
 # ---------------------------------------------------------------------------
 install_omz() {
-    if [[ -n "${DRY_RUN:-}" ]]; then
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
         log_info "would: install oh-my-zsh via curl | sh --unattended --keep-zshrc"
         return 0
     fi
@@ -46,7 +46,7 @@ install_omz() {
 # 2. powerlevel10k theme
 # ---------------------------------------------------------------------------
 install_p10k() {
-    if [[ -n "${DRY_RUN:-}" ]]; then
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
         log_info "would: git clone --depth=1 powerlevel10k into \$ZSH_CUSTOM/themes/powerlevel10k"
         return 0
     fi
@@ -67,25 +67,28 @@ install_p10k() {
 # 3. zsh custom plugins (syntax-highlighting, autosuggestions, completions)
 # ---------------------------------------------------------------------------
 install_zsh_plugins() {
-    if [[ -n "${DRY_RUN:-}" ]]; then
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
         log_info "would: git clone --depth=1 zsh-syntax-highlighting, zsh-autosuggestions, zsh-completions into \$ZSH_CUSTOM/plugins/"
         return 0
     fi
 
-    declare -A plugins=(
-        [zsh-syntax-highlighting]="https://github.com/zsh-users/zsh-syntax-highlighting.git"
-        [zsh-autosuggestions]="https://github.com/zsh-users/zsh-autosuggestions.git"
-        [zsh-completions]="https://github.com/zsh-users/zsh-completions.git"
+    local plugin_entries=(
+        "zsh-syntax-highlighting|https://github.com/zsh-users/zsh-syntax-highlighting.git"
+        "zsh-autosuggestions|https://github.com/zsh-users/zsh-autosuggestions.git"
+        "zsh-completions|https://github.com/zsh-users/zsh-completions.git"
     )
 
-    for name in zsh-syntax-highlighting zsh-autosuggestions zsh-completions; do
+    local entry name url
+    for entry in "${plugin_entries[@]}"; do
+        name="${entry%|*}"
+        url="${entry#*|}"
         local dest="$ZSH_CUSTOM/plugins/$name"
         if [[ -d "$dest" ]]; then
             log_ok "$name already installed"
             continue
         fi
         log_info "Installing $name..."
-        if git clone --depth=1 "${plugins[$name]}" "$dest" 2>&1; then
+        if git clone --depth=1 "$url" "$dest" 2>&1; then
             log_ok "$name installed"
         else
             log_warn "$name clone failed — continuing"
@@ -97,7 +100,7 @@ install_zsh_plugins() {
 # 4. nvm + LTS Node
 # ---------------------------------------------------------------------------
 install_nvm() {
-    if [[ -n "${DRY_RUN:-}" ]]; then
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
         log_info "would: install nvm v0.40.0 via curl | bash, then nvm install --lts"
         return 0
     fi
@@ -113,7 +116,11 @@ install_nvm() {
         # set +u: nvm.sh references unset vars internally; guard around the source.
         set +u
         # shellcheck source=/dev/null
-        . "$NVM_DIR/nvm.sh"
+        if ! . "$NVM_DIR/nvm.sh"; then
+            log_warn "Failed to source nvm.sh — skipping Node LTS install"
+            set -u
+            return 0
+        fi
         set -u
         log_info "Installing Node LTS via nvm..."
         if nvm install --lts; then
@@ -130,7 +137,7 @@ install_nvm() {
 # 5. pnpm
 # ---------------------------------------------------------------------------
 install_pnpm() {
-    if [[ -n "${DRY_RUN:-}" ]]; then
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
         log_info "would: install pnpm via curl -fsSL https://get.pnpm.io/install.sh | sh -"
         return 0
     fi
@@ -150,7 +157,7 @@ install_pnpm() {
 # 6. maestro
 # ---------------------------------------------------------------------------
 install_maestro() {
-    if [[ -n "${DRY_RUN:-}" ]]; then
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
         log_info "would: install maestro via curl -Ls https://get.maestro.mobile.dev | bash"
         return 0
     fi

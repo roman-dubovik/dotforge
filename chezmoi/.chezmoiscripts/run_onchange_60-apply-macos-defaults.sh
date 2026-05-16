@@ -25,10 +25,14 @@ REPO_ROOT="${SOURCE_PATH%/chezmoi}"
 # ── DRY_RUN shim ──
 # Shadow the `defaults` binary so the write block can stay verbatim.
 defaults() {
-    if [[ -n "${DRY_RUN:-}" ]]; then
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
         echo "would: defaults $*"
     else
         command defaults "$@"
+        local rc=$?
+        if (( rc != 0 )); then
+            log_warn "defaults $* failed (exit $rc) — continuing"
+        fi
     fi
 }
 
@@ -57,7 +61,7 @@ defaults write NSGlobalDomain AppleShowAllFiles -bool true
 defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true   # no .DS_Store on network shares
 
 # ── Screenshots ──
-if [[ -n "${DRY_RUN:-}" ]]; then
+if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "would: mkdir -p $HOME/Pictures/Screenshots"
 else
     mkdir -p "$HOME/Pictures/Screenshots"
@@ -95,7 +99,7 @@ defaults write com.apple.Safari WebKitDeveloperExtrasEnabledPreferenceKey -bool 
 defaults write com.apple.Safari com.apple.Safari.ContentPageGroupIdentifier.WebKit2DeveloperExtrasEnabled -bool true
 
 # ── Restart affected services ──
-if [[ -n "${DRY_RUN:-}" ]]; then
+if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "would: killall Dock Finder SystemUIServer"
 else
     killall Dock Finder SystemUIServer 2>/dev/null || true
