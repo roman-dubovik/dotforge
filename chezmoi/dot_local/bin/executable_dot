@@ -5,14 +5,10 @@
 #   dot                    # print help
 #   dot help               # same as above
 #   dot doctor [--check=<name>]  # run diagnostics
+#   dot apply [OPTIONS]    # apply chezmoi dotfiles with delta
+#   dot snapshot [OPTIONS] # capture machine state + git commit
+#   dot pull [OPTIONS]     # sync from origin, apply, doctor
 #   dot version            # print version and branch
-#
-# Subcommands:
-#   doctor                 read-only diagnostic checks
-#   help                   show this help message
-#   version                print dotforge version and branch
-#
-# Coming in slice 2c: apply, snapshot, pull
 
 set -euo pipefail
 
@@ -36,6 +32,18 @@ case "$SUBCOMMAND" in
         shift || true
         DOTFORGE_BRANCH="${DOTFORGE_BRANCH:-main}" exec bash "$REPO_ROOT/scripts/doctor.sh" "$@"
         ;;
+    apply)
+        shift || true
+        exec bash "$REPO_ROOT/scripts/dot-apply.sh" "$@"
+        ;;
+    snapshot)
+        shift || true
+        exec bash "$REPO_ROOT/scripts/dot-snapshot.sh" "$@"
+        ;;
+    pull)
+        shift || true
+        exec bash "$REPO_ROOT/scripts/dot-pull.sh" "$@"
+        ;;
     version)
         HASH="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
         BRANCH="$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || echo "detached")"
@@ -51,8 +59,11 @@ Usage:
 
 Subcommands:
   doctor [--check=<name>]       run read-only diagnostic checks
-  help, -h, --help              show this help message
+  apply [OPTIONS]               apply chezmoi dotfiles with before/after doctor delta
+  snapshot [OPTIONS]            capture current machine state to canonical files + git commit
+  pull [OPTIONS]                sync from origin: git pull --ff-only, chezmoi apply, doctor
   version                        print version and branch
+  help, -h, --help              show this help message
 
 Options (doctor):
   --check=<name>                run a single named check
@@ -65,8 +76,6 @@ Exit codes:
   0                             all checks passed
   1                             one or more warnings
   2                             one or more failures
-
-Coming in slice 2c: apply, snapshot, pull
 EOF
         exit 0
         ;;
