@@ -483,9 +483,11 @@ check_repo_sync() {
         return
     fi
 
-    # Count commits local is behind origin/main
+    local branch="${DOTFORGE_BRANCH:-main}"
+
+    # Count commits local is behind origin/${branch}
     local behind
-    behind="$(chezmoi git -- rev-list --count HEAD..origin/main 2>/dev/null)" || behind=""
+    behind="$(chezmoi git -- rev-list --count "HEAD..origin/${branch}" 2>/dev/null)" || behind=""
 
     if [[ -z "$behind" ]]; then
         print_status WARN "Repo" "could not determine sync status (upstream not set?)"
@@ -493,9 +495,9 @@ check_repo_sync() {
     fi
 
     if [[ "$behind" -eq 0 ]]; then
-        print_status OK "Repo" "up to date with origin/main"
+        print_status OK "Repo" "up to date with origin/${branch}"
     else
-        print_status WARN "Repo" "${behind} commit(s) behind origin/main (run 'chezmoi update')"
+        print_status WARN "Repo" "${behind} commit(s) behind origin/${branch} (run 'chezmoi update')"
     fi
 }
 

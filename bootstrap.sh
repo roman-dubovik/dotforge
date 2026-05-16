@@ -292,7 +292,7 @@ cmd_doctor() {
     if [[ -z "$repo_root" || ! -x "$repo_root/scripts/doctor.sh" ]]; then
         err "Repo not cloned yet (run 'setup' first)."
     fi
-    bash "$repo_root/scripts/doctor.sh" "$@"
+    DOTFORGE_BRANCH="$REPO_BRANCH" bash "$repo_root/scripts/doctor.sh" "$@"
 }
 
 # ── Subcommand: fork ──
