@@ -95,11 +95,16 @@ check_chezmoi() {
         return
     fi
 
-    local diff_out diff_rc
-    diff_out="$(chezmoi diff 2>/dev/null)" || diff_rc=$?
+    local diff_out diff_err diff_rc _stderr_tmp
+    _stderr_tmp="$(mktemp)"
+    diff_out="$(chezmoi diff 2>"$_stderr_tmp")" || diff_rc=$?
+    diff_err="$(cat "$_stderr_tmp" 2>/dev/null)"
+    rm -f "$_stderr_tmp"
     diff_rc="${diff_rc:-0}"
     if [[ "$diff_rc" -ne 0 ]]; then
-        print_status FAIL "chezmoi state" "chezmoi diff failed (rc=${diff_rc}); run 'chezmoi diff' manually"
+        local detail
+        detail="$(printf "%s" "$diff_err" | head -1)"
+        print_status FAIL "chezmoi state" "chezmoi diff failed (rc=${diff_rc}) — ${detail:-no detail}; run 'chezmoi diff' manually"
         return
     fi
     if [[ -z "$diff_out" ]]; then
@@ -397,11 +402,16 @@ check_macos_defaults() {
         return
     fi
 
-    local diff_out diff_rc
-    diff_out="$(bash "$scan_script" --diff 2>/dev/null)" || diff_rc=$?
+    local diff_out diff_err diff_rc _stderr_tmp
+    _stderr_tmp="$(mktemp)"
+    diff_out="$(bash "$scan_script" --diff 2>"$_stderr_tmp")" || diff_rc=$?
+    diff_err="$(cat "$_stderr_tmp" 2>/dev/null)"
+    rm -f "$_stderr_tmp"
     diff_rc="${diff_rc:-0}"
     if [[ "$diff_rc" -ne 0 ]]; then
-        print_status WARN "macOS defaults" "scan-macos-defaults.sh --diff failed (rc=${diff_rc}); run manually for details"
+        local detail
+        detail="$(printf "%s" "$diff_err" | head -1)"
+        print_status WARN "macOS defaults" "scan-macos-defaults.sh --diff failed (rc=${diff_rc}) — ${detail:-no detail}; run manually for details"
         return
     fi
 
@@ -430,11 +440,16 @@ check_login_autostart() {
         return
     fi
 
-    local diff_out diff_rc
-    diff_out="$(bash "$scan_script" --diff 2>/dev/null)" || diff_rc=$?
+    local diff_out diff_err diff_rc _stderr_tmp
+    _stderr_tmp="$(mktemp)"
+    diff_out="$(bash "$scan_script" --diff 2>"$_stderr_tmp")" || diff_rc=$?
+    diff_err="$(cat "$_stderr_tmp" 2>/dev/null)"
+    rm -f "$_stderr_tmp"
     diff_rc="${diff_rc:-0}"
     if [[ "$diff_rc" -ne 0 ]]; then
-        print_status WARN "Login items" "scan-login-autostart.sh --diff failed (rc=${diff_rc}); run manually for details"
+        local detail
+        detail="$(printf "%s" "$diff_err" | head -1)"
+        print_status WARN "Login items" "scan-login-autostart.sh --diff failed (rc=${diff_rc}) — ${detail:-no detail}; run manually for details"
         return
     fi
 
