@@ -90,7 +90,7 @@ else
 
             if [[ "${DRY_RUN:-0}" == "1" ]]; then
                 # In dry-run we can't query real state — report as would-apply
-                run_or_dry osascript -e "tell application \"System Events\" to make login item at end with properties {path:\"$path\", hidden:false}"
+                echo "would: osascript add login item: $path"
                 (( applied++ )) || true
                 continue
             fi
@@ -102,8 +102,15 @@ else
                 continue
             fi
 
-            # Add the login item
-            add_out="$(osascript -e "tell application \"System Events\" to make login item at end with properties {path:\"$path\", hidden:false}" 2>&1)"
+            # Add the login item via argv to prevent AppleScript injection
+            add_out="$(osascript - "$path" 2>&1 <<'APPLESCRIPT'
+on run argv
+  tell application "System Events"
+    make login item at end with properties {path:item 1 of argv, hidden:false}
+  end tell
+end run
+APPLESCRIPT
+            )"
             add_rc=$?
             if (( add_rc != 0 )); then
                 log_warn "failed to add login item: $path (exit $add_rc): $add_out"
@@ -141,13 +148,20 @@ for plist in "$LAUNCHAGENTS_DIR"/*.plist; do
     run_or_dry launchctl bootout "gui/$UID/$label" 2>/dev/null || true
 
     # bootstrap
-    if run_or_dry launchctl bootstrap "gui/$UID" "$plist"; then
-        log_ok "Loaded LaunchAgent: $label ($plist)"
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        echo "would: launchctl bootstrap gui/$UID $plist"
+        log_ok "Loaded LaunchAgent: $label ($plist) (DRY_RUN)"
         (( loaded++ )) || true
     else
+        boot_output="$(launchctl bootstrap "gui/$UID" "$plist" 2>&1)"
         boot_rc=$?
-        log_warn "Failed to load LaunchAgent: $plist (exit $boot_rc)"
-        (( warnings++ )) || true
+        if (( boot_rc == 0 )); then
+            log_ok "Loaded LaunchAgent: $label ($plist)"
+            (( loaded++ )) || true
+        else
+            log_warn "Failed to load LaunchAgent: $plist (exit $boot_rc): $boot_output"
+            (( warnings++ )) || true
+        fi
     fi
 done
 

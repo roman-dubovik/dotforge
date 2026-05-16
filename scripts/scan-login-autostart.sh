@@ -42,7 +42,13 @@ printf "\n# ── Login Items ──\n"
 printf "# (paste into login-items.txt — one /Applications/Foo.app per line)\n"
 
 raw_items=""
-if raw_items="$(osascript -e 'tell application "System Events" to get the path of every login item' 2>/dev/null)"; then
+raw_items="$(osascript -e 'tell application "System Events" to get the path of every login item' 2>&1)"
+osascript_rc=$?
+if (( osascript_rc != 0 )); then
+    log_warn "osascript failed (exit $osascript_rc): $raw_items"
+    log_warn "if the error mentions Automation, grant access in System Settings → Privacy & Security → Automation, then re-run"
+    current_items=()
+else
     # osascript succeeded — may be empty if no login items
     # Strip all whitespace to detect the truly-empty case
     trimmed="${raw_items//[[:space:]]/}"
@@ -61,9 +67,6 @@ if raw_items="$(osascript -e 'tell application "System Events" to get the path o
             [[ "$item" == /* ]] && current_items+=("$item")
         done < <(printf "%s" "$raw_items" | sed 's/, /\n/g')
     fi
-else
-    log_warn "osascript failed — grant Automation access in System Settings → Privacy & Security → Automation, then re-run."
-    current_items=()
 fi
 
 if (( DIFF_MODE == 0 )); then
