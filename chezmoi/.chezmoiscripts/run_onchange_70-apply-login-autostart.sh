@@ -135,6 +135,11 @@ log_info "Loading custom LaunchAgents from $LAUNCHAGENTS_DIR..."
 shopt -s nullglob
 
 for plist in "$LAUNCHAGENTS_DIR"/*.plist; do
+    [[ -e "$plist" ]] || continue
+    # Only process plists chezmoi placed there; ignore third-party ones
+    if ! chezmoi source-path "$plist" >/dev/null 2>&1; then
+        continue
+    fi
     # Extract the Label from the plist
     label=""
     label="$(/usr/libexec/PlistBuddy -c 'Print :Label' "$plist" 2>/dev/null)"
