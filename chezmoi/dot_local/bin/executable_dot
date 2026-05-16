@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# dotforge dot — unified CLI for diagnostics and configuration
+#
+# Usage:
+#   dot                    # print help
+#   dot help               # same as above
+#   dot doctor [--check=<name>]  # run diagnostics
+#   dot version            # print version and branch
+#
+# Subcommands:
+#   doctor                 read-only diagnostic checks
+#   help                   show this help message
+#   version                print dotforge version and branch
+#
+# Coming in slice 2c: apply, snapshot, pull
+
+set -euo pipefail
+
+# ── Repo discovery (pattern B) ──
+SOURCE_PATH="$(chezmoi source-path 2>/dev/null || echo "$HOME/.local/share/chezmoi")"
+REPO_ROOT="${SOURCE_PATH%/chezmoi}"
+
+# ── Dispatcher ──
+SUBCOMMAND="${1:-help}"
+
+case "$SUBCOMMAND" in
+    doctor)
+        shift || true
+        DOTFORGE_BRANCH="${DOTFORGE_BRANCH:-main}" exec bash "$REPO_ROOT/scripts/doctor.sh" "$@"
+        ;;
+    version)
+        HASH="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+        BRANCH="$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || echo "detached")"
+        printf "dotforge %s on %s\n" "$HASH" "$BRANCH"
+        exit 0
+        ;;
+    help|-h|--help)
+        cat << 'EOF'
+dotforge dot — unified CLI for diagnostics and configuration
+
+Usage:
+  dot [SUBCOMMAND] [OPTIONS]
+
+Subcommands:
+  doctor [--check=<name>]       run read-only diagnostic checks
+  help, -h, --help              show this help message
+  version                        print version and branch
+
+Options (doctor):
+  --check=<name>                run a single named check
+  --color, --no-color           force or disable ANSI colors
+
+Named checks: chezmoi, brewfile, cli-globals, curl-toolchains,
+              ssh-keys, macos-defaults, login-autostart, repo
+
+Exit codes:
+  0                             all checks passed
+  1                             one or more warnings
+  2                             one or more failures
+
+Coming in slice 2c: apply, snapshot, pull
+EOF
+        exit 0
+        ;;
+    *)
+        printf "dot: unknown subcommand '%s' (run 'dot help')\n" "$SUBCOMMAND" >&2
+        exit 1
+        ;;
+esac
