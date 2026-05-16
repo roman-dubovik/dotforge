@@ -29,7 +29,13 @@ INTERACTIVE=1
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --archetype) ARCHETYPE="$2"; shift 2 ;;
+        --archetype)
+            ARCHETYPE="$2"
+            if [[ "$ARCHETYPE" == "custom" ]]; then
+                echo "--archetype custom is not supported via CLI (custom requires interactive selection)" >&2
+                exit 2
+            fi
+            shift 2 ;;
         --output)    OUTPUT="$2";    shift 2 ;;
         --brewfile)  BREWFILE="$2";  shift 2 ;;
         --no-install)     NO_INSTALL=1;   shift ;;

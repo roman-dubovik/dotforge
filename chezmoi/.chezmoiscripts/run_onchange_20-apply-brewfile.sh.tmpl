@@ -3,7 +3,7 @@
 # Prefers Brewfile.local (produced by scripts/customize-brewfile.sh) over
 # the canonical Brewfile when both exist, so users can run a customized
 # subset without modifying the source-of-truth.
-# version: brewfile-v2 {{ .profile }}
+# version: brewfile-v3 {{ .profile }}
 
 set -euo pipefail
 
@@ -12,14 +12,26 @@ REPO_ROOT="${SOURCE_PATH%/chezmoi}"
 BREWFILE_LOCAL="$REPO_ROOT/Brewfile.local"
 BREWFILE_CANONICAL="$REPO_ROOT/Brewfile"
 
+# Read archetype from chezmoi template data (empty string if key not present).
+ARCHETYPE="{{ index . "brewfile_archetype" | default "" }}"
+
+# Auto-generate Brewfile.local from archetype when missing and archetype is
+# not "custom" (custom requires interactive selection) and not empty.
+if [[ ! -f "$BREWFILE_LOCAL" ]] && [[ -n "$ARCHETYPE" ]] && [[ "$ARCHETYPE" != "custom" ]]; then
+    echo "[brewfile-hook] Brewfile.local absent; generating from archetype '$ARCHETYPE'..."
+    if ! bash "$REPO_ROOT/scripts/customize-brewfile.sh" --archetype "$ARCHETYPE" --no-install; then
+        echo "[brewfile-hook] WARN: customize-brewfile.sh failed; falling back to canonical Brewfile" >&2
+    fi
+fi
+
 if [[ -f "$BREWFILE_LOCAL" ]]; then
     BREWFILE="$BREWFILE_LOCAL"
-    echo "Applying customized Brewfile: $BREWFILE"
+    echo "[brewfile-hook] Using customized Brewfile: $BREWFILE"
 elif [[ -f "$BREWFILE_CANONICAL" ]]; then
     BREWFILE="$BREWFILE_CANONICAL"
-    echo "Applying canonical Brewfile: $BREWFILE"
+    echo "[brewfile-hook] Using canonical Brewfile: $BREWFILE"
 else
-    echo "No Brewfile found at $BREWFILE_CANONICAL" >&2
+    echo "[brewfile-hook] No Brewfile found at $BREWFILE_CANONICAL" >&2
     exit 1
 fi
 
