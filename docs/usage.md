@@ -753,10 +753,11 @@ Unified namespace for dotforge operations, installed at `~/.local/bin/dot` via c
 | Subcommand | Description |
 |---|---|
 | `doctor [--check=<name>]` | Run read-only diagnostic checks — identical to `bootstrap.sh doctor` |
+| `apply [--dry-run]` | Apply chezmoi dotfiles and show before/after doctor delta; `--dry-run` runs `chezmoi diff` without mutating |
+| `snapshot [--no-cli] [--no-autostart]` | Capture current machine state (CLI globals, login items) into canonical files and prompt for a git commit |
+| `pull` | Sync from origin: `git pull --ff-only`, `chezmoi apply`, then `dot doctor`; strict bail on any error |
 | `help` | Show usage and available subcommands |
 | `version` | Print repo HEAD short hash and branch name |
-
-`apply`, `snapshot`, and `pull` are coming in slice 2c.
 
 ### Example: `dot help`
 
@@ -768,8 +769,11 @@ Usage:
 
 Subcommands:
   doctor [--check=<name>]       run read-only diagnostic checks
-  help, -h, --help              show this help message
+  apply [OPTIONS]               apply chezmoi dotfiles with before/after doctor delta
+  snapshot [OPTIONS]            capture current machine state to canonical files + git commit
+  pull [OPTIONS]                sync from origin: git pull --ff-only, chezmoi apply, doctor
   version                        print version and branch
+  help, -h, --help              show this help message
 
 Options (doctor):
   --check=<name>                run a single named check
@@ -782,8 +786,6 @@ Exit codes:
   0                             all checks passed
   1                             one or more warnings
   2                             one or more failures
-
-Coming in slice 2c: apply, snapshot, pull
 ```
 
 ### Usage
@@ -793,6 +795,19 @@ dot doctor                    # full 8-check diagnostic (= bootstrap.sh doctor)
 dot doctor --check=brewfile   # single-check mode
 dot version                   # e.g. "dotforge abc1234 on main"
 dot help                      # print usage
+
+# Fix drift: apply dotfiles and see what changed
+dot apply                     # chezmoi apply + before/after doctor delta (e.g. "1 WARN → 0 WARN")
+
+# Preview what chezmoi would change without mutating
+dot apply --dry-run           # runs chezmoi diff, exits without writing anything
+
+# Capture current machine state after installing new tools
+dot snapshot                  # scan CLI globals + login items, then prompt per-file git commit
+dot snapshot --no-autostart   # skip login-items scan, only capture CLI globals
+
+# Sync dotfiles from another machine (e.g. pulling changes made on mac-mini)
+dot pull                      # git pull --ff-only + chezmoi apply + dot doctor; bails on any error
 ```
 
 The `dot` binary is placed at `chezmoi/dot_local/bin/executable_dot` in the repo and lands at `~/.local/bin/dot` after `chezmoi apply`. Ensure `~/.local/bin` is in your `$PATH` (the managed `.zshrc` includes it).

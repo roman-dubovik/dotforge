@@ -34,6 +34,12 @@ Run `bootstrap.sh` with one of these subcommands:
 - `scan-autostart` — dump current login items + LaunchAgents survey
 - `doctor` — read-only sync check: 8 diagnostic checks against canonical state, exits 0/1/2
   - (or use `dot doctor` from PATH after `chezmoi apply` — same checks, same exit codes)
+- `apply` — apply chezmoi dotfiles + show before/after doctor delta; `--dry-run` previews diff
+  - (or use `dot apply` from PATH after `chezmoi apply`)
+- `snapshot` — capture current machine state (CLI globals, login items) into canonical files + git commit; `--no-cli` / `--no-autostart` to skip individual scanners
+  - (or use `dot snapshot` from PATH after `chezmoi apply`)
+- `pull` — sync from origin (git pull --ff-only), chezmoi apply, doctor; strict bail on any error
+  - (or use `dot pull` from PATH after `chezmoi apply`)
 - `fork` — clone+personalize this repo under your own GitHub
 - `browse` — read-only walkthrough
 
@@ -61,7 +67,7 @@ Each item has custom fields: `profile`, `created_at`, `fingerprint`, `algorithm`
 - `bootstrap.sh doctor` — 8-check read-only diagnostic (chezmoi state, Brewfile, CLI globals, curl-toolchains, SSH keys, macOS defaults, login items, repo sync) — **done** (slice 1).
 - `dot` CLI namespace — `~/.local/bin/dot` shim installed via `chezmoi apply`; subcommands: `doctor`, `help`, `version` — **done** (slice 2a).
 - Persistent Brewfile archetypes — `brewfile_archetype` stored in `~/.config/chezmoi/chezmoi.toml`; hook auto-regenerates `Brewfile.local` on every `chezmoi apply` — **done** (slice 2b).
-- `dot apply` / `dot snapshot` / `dot pull` — unified chezmoi + brew + macOS state operations — **pending** (slice 2c).
+- `dot apply` / `dot snapshot` / `dot pull` — unified chezmoi + brew + macOS state operations — **shipped 2026-05-16** (slice 2c).
 - Feature flags (toggle docker-desktop / jetbrains / local-llm) declared inside archetypes — **pending** (slice 2d).
 
 **Plan 3 — Multi-machine sync** (pending) — active reconciliation between machines (e.g. detecting that mac-mini has a brew package mbp doesn't, or that one Mac drifted from the canonical state) with conflict resolution. Today distribution is one-way via chezmoi + git; two-tier Bitwarden items (`dotforge-ssh-<profile>` vs `dotforge-ssh-<profile>-<machine>`) handle key scoping but not state reconciliation.
