@@ -65,6 +65,10 @@ done
 
 command -v brew >/dev/null || { echo "brew is required" >&2; exit 1; }
 [[ -f "$BREWFILE" ]] || { echo "Brewfile not found: $BREWFILE" >&2; exit 1; }
+# jq powers the cask-artifact mapping. Without it every cask falls back to
+# the slug-only matcher and apps already declared in Brewfile look
+# untracked — silent logical failure since `|| true` masks the jq miss.
+command -v jq >/dev/null || { echo "jq is required (brew install jq)" >&2; exit 1; }
 if (( INTERACTIVE == 1 )); then
     command -v gum >/dev/null || { echo "gum is required (brew install gum)" >&2; exit 1; }
 fi
@@ -149,10 +153,20 @@ scan_applications() {
     : > "$cask_artifact_map"
     if (( ${#CASK_DECLARED[@]} > 0 )); then
         echo "  → Resolving cask → app artifact mapping for ${#CASK_DECLARED[@]} declared casks..."
-        brew info --cask --json=v2 "${CASK_DECLARED[@]}" 2>/dev/null \
-            | jq -r '.casks[] | .token as $t | .artifacts[]? | if type=="object" and (.app // empty | length > 0) then "\(.app[0])|\($t)" else empty end' 2>/dev/null \
+        # Capture brew stderr so a failure (renamed/missing cask) is visible
+        # instead of producing an empty artifact map that silently
+        # misclassifies every cask-installed app as untracked.
+        local brew_err="$TMP/brew-info-declared.err"
+        if ! brew info --cask --json=v2 "${CASK_DECLARED[@]}" 2>"$brew_err" \
+            | jq -r '.casks[] | .token as $t | .artifacts[]? | if type=="object" and (.app // empty | length > 0) then "\(.app[0])|\($t)" else empty end' \
             | sed 's/\.app|/|/' \
-            > "$cask_artifact_map" || true
+            > "$cask_artifact_map"; then
+            echo "  ⚠ brew info --cask failed; cask artifact mapping incomplete:" >&2
+            sed 's/^/    /' "$brew_err" >&2
+        fi
+        if [[ ! -s "$cask_artifact_map" ]] && [[ -s "$brew_err" ]]; then
+            echo "  ⚠ cask artifact map is empty — see brew stderr above" >&2
+        fi
     fi
 
     cask_for_app() {
@@ -211,9 +225,13 @@ scan_applications() {
         [[ -n "$cask" ]] && installed_casks+=("$cask")
     done < <(brew list --cask 2>/dev/null || true)
     if (( ${#installed_casks[@]} > 0 )); then
-        local artifacts
-        artifacts="$(brew info --cask --json=v2 "${installed_casks[@]}" 2>/dev/null \
-            | jq -r '.casks[].artifacts[]? | if type=="object" and (.app // empty | length > 0) then .app[]? else empty end' 2>/dev/null || true)"
+        local artifacts brew_err2="$TMP/brew-info-installed.err"
+        if ! artifacts="$(brew info --cask --json=v2 "${installed_casks[@]}" 2>"$brew_err2" \
+            | jq -r '.casks[].artifacts[]? | if type=="object" and (.app // empty | length > 0) then .app[]? else empty end')"; then
+            echo "  ⚠ brew info on installed casks failed; classification of installed apps may be incomplete:" >&2
+            sed 's/^/    /' "$brew_err2" >&2
+            artifacts=""
+        fi
         while IFS= read -r a; do
             [[ -z "$a" ]] && continue
             CASK_INSTALLED_APPS+=("${a%.app}")
@@ -398,7 +416,11 @@ scan_applications() {
 # ── Capture state ──
 
 echo "→ Dumping installed state via brew bundle..."
-brew bundle dump --force --file="$TMP/installed-raw.txt" >/dev/null 2>&1
+if ! brew bundle dump --force --file="$TMP/installed-raw.txt" >/dev/null 2>"$TMP/dump-err.log"; then
+    echo "brew bundle dump failed:" >&2
+    sed 's/^/  /' "$TMP/dump-err.log" >&2
+    exit 1
+fi
 extract_entries "$TMP/installed-raw.txt" | sort -u > "$TMP/installed.txt.unfiltered"
 filter_kinds "$TMP/installed.txt.unfiltered" | sort -u > "$TMP/installed.txt"
 
