@@ -1,6 +1,8 @@
 {{- $machine_name := promptStringOnce . "machine_name" "Machine name (human-friendly, e.g. personal-mbp)" -}}
 {{- $profile := promptChoiceOnce . "profile" "Profile" (list "personal" "work") -}}
+{{- $brewfile_archetype := promptChoiceOnce . "brewfile_archetype" "Brewfile archetype" (list "full" "minimal-dev" "cli-server" "custom") -}}
 
 [data]
-    machine_name = {{ $machine_name | quote }}
-    profile      = {{ $profile | quote }}
+    machine_name        = {{ $machine_name | quote }}
+    profile             = {{ $profile | quote }}
+    brewfile_archetype  = {{ $brewfile_archetype | quote }}
