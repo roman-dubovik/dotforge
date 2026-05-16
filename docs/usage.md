@@ -582,6 +582,83 @@ bootstrap.sh scan-cli --json            # machine-readable
 
 ---
 
+## Chezmoi hooks (Plan 1.5 additions)
+
+### `run_onchange_25-install-curl-toolchains.sh`
+
+Installs the non-brew toolchains that the managed `.zshrc` depends on. Runs between the Brewfile hook (`20`) and the CLI-globals hook (`30`), so that `nvm` is available before npm globals are replayed.
+
+Installs (each idempotent — skipped if already present):
+
+- **oh-my-zsh** via the official installer with `--unattended --keep-zshrc` to avoid clobbering the managed `~/.zshrc`
+- **powerlevel10k** theme (git clone into `$ZSH_CUSTOM/themes/`)
+- Three zsh custom plugins: `zsh-syntax-highlighting`, `zsh-autosuggestions`, `zsh-completions`
+- **nvm** plus the current Node LTS so subsequent `npm i -g …` calls work
+- **pnpm**
+- **maestro** (mobile UI testing CLI)
+
+Individual installer failures log a warning but do not abort the hook — one broken toolchain cannot block the rest of `chezmoi apply`.
+
+Dry-run preview without touching the network:
+
+```bash
+DRY_RUN=1 bash chezmoi/.chezmoiscripts/run_onchange_25-install-curl-toolchains.sh
+```
+
+### `run_onchange_60-apply-macos-defaults.sh`
+
+Applies a baseline of ~35 macOS `defaults write` keys across Dock, Finder, Screenshots, Keyboard, Trackpad, UI, and Safari. All writes are user-level domains (no `sudo`). After applying, the hook runs `killall Dock Finder SystemUIServer` so changes are visible immediately.
+
+Dry-run preview:
+
+```bash
+DRY_RUN=1 bash chezmoi/.chezmoiscripts/run_onchange_60-apply-macos-defaults.sh
+```
+
+To see what your current Mac has versus the baseline, use the companion `scan-macos` subcommand (see below).
+
+### `run_onchange_70-apply-login-autostart.sh`
+
+Two related autostart mechanisms in one hook:
+
+1. **Login Items** — reads `login-items.txt` from the repo root (one absolute app path per line; lines starting with `#` are comments). Each path becomes an entry in System Settings → General → Login Items via osascript. Idempotent: already-present entries are skipped. Missing apps log a warning and are skipped.
+2. **Custom LaunchAgents** — for every `.plist` chezmoi placed under `~/Library/LaunchAgents/` (sourced from `chezmoi/private_dot_Library/private_LaunchAgents/` in the repo), the hook runs `launchctl bootout` then `launchctl bootstrap` to reload the agent. Per-user only — no `sudo`, no `/Library/LaunchDaemons/`.
+
+Note: LaunchAgents that a brew cask installs (Docker Desktop, iTerm2, Karabiner, etc.) belong to those apps and rebuild on `brew bundle` — do not version them in this repo.
+
+Dry-run preview:
+
+```bash
+DRY_RUN=1 bash chezmoi/.chezmoiscripts/run_onchange_70-apply-login-autostart.sh
+```
+
+First run may trigger a macOS Automation permission prompt for System Events. Grant it in System Settings → Privacy & Security → Automation, then re-run the hook.
+
+### `bootstrap.sh scan-macos`
+
+Reads the current `defaults read` value for each baseline key and prints ready-to-paste `defaults write` lines. Use `--diff` to surface only keys where your current state differs from the hook's baseline:
+
+```bash
+bootstrap.sh scan-macos          # full snapshot of all 35 keys
+bootstrap.sh scan-macos --diff   # only divergent keys, with baseline values for reference
+```
+
+The output is meant to be copy-pasted as additional `defaults write` lines into the hook if you discover settings you want to promote to the baseline.
+
+### `bootstrap.sh scan-autostart`
+
+Read-only survey of the current Mac's autostart state. Prints two sections:
+
+- **Login Items** — copy-paste-ready paths for `login-items.txt`. Run this first on your canonical Mac to seed the baseline.
+- **LaunchAgents** — a human-readable table of every `~/Library/LaunchAgents/*.plist` with its Label, target binary, and a guess at the source (cask vs custom). Use this to identify which plists are worth versioning into `chezmoi/private_dot_Library/private_LaunchAgents/`.
+
+```bash
+bootstrap.sh scan-autostart           # snapshot
+bootstrap.sh scan-autostart --diff    # show login items that diverge from login-items.txt
+```
+
+---
+
 ## Profiles
 
 `profile` is a single string (`personal` or `work`) that gates conditional
