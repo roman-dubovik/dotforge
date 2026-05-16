@@ -7,7 +7,7 @@
 #   scripts/scan-login-autostart.sh --diff    # compare login items against login-items.txt baseline
 #   scripts/scan-login-autostart.sh --capture # capture current login items to login-items.txt
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
