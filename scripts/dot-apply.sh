@@ -98,6 +98,8 @@ log_section "Health delta"
 
 # Extract status and label from a doctor snapshot file.
 # Output: "<STATUS> <label>" — one line per status line, status is OK/WARN/FAIL.
+# Label width is hardcoded to 22 chars (doctor.sh %-22s format). New doctor
+# checks must use ≤22-char labels or delta extraction will silently truncate.
 extract_status_labels() {
     local file="$1"
     local line status label
