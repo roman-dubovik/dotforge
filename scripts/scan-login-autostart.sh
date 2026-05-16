@@ -5,6 +5,7 @@
 # Usage:
 #   scripts/scan-login-autostart.sh           # print current login items + LaunchAgents
 #   scripts/scan-login-autostart.sh --diff    # compare login items against login-items.txt baseline
+#   scripts/scan-login-autostart.sh --capture # capture current login items to login-items.txt
 
 set -uo pipefail
 
@@ -16,17 +17,23 @@ source "$REPO_ROOT/lib/log.sh" 2>/dev/null || {
     # fallback no-op loggers if lib/log.sh missing (shouldn't happen in normal flow)
     log_info() { printf "%s\n" "$*"; }
     log_warn() { printf "WARN: %s\n" "$*" >&2; }
+    log_error() { printf "ERROR: %s\n" "$*" >&2; }
 }
 
 DIFF_MODE=0
+CAPTURE_MODE=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --diff)
             DIFF_MODE=1
             shift
             ;;
+        --capture)
+            CAPTURE_MODE=1
+            shift
+            ;;
         --help|-h)
-            sed -n '2,6p' "$0" | sed 's/^# \?//'
+            sed -n '2,8p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *)
@@ -45,6 +52,11 @@ raw_items=""
 raw_items="$(osascript -e 'tell application "System Events" to get the path of every login item' 2>&1)"
 osascript_rc=$?
 if (( osascript_rc != 0 )); then
+    if (( CAPTURE_MODE == 1 )); then
+        log_error "osascript failed (exit $osascript_rc): $raw_items"
+        log_error "if the error mentions Automation, grant access in System Settings → Privacy & Security → Automation, then re-run"
+        exit 1
+    fi
     log_warn "osascript failed (exit $osascript_rc): $raw_items"
     log_warn "if the error mentions Automation, grant access in System Settings → Privacy & Security → Automation, then re-run"
     current_items=()
@@ -67,6 +79,29 @@ else
             [[ "$item" == /* ]] && current_items+=("$item")
         done < <(printf "%s" "$raw_items" | sed 's/, /\n/g')
     fi
+fi
+
+# ── Capture mode ──
+if (( CAPTURE_MODE == 1 )); then
+    OUTPUT="$REPO_ROOT/login-items.txt"
+
+    # Backup existing file if present
+    if [[ -f "$OUTPUT" ]]; then
+        cp "$OUTPUT" "${OUTPUT}.bak"
+        printf "→ Backed up existing %s to %s.bak\n" "$OUTPUT" "$OUTPUT"
+    fi
+
+    printf "→ Capturing login items to %s...\n" "$OUTPUT"
+
+    # Sort the items lexicographically and write to file (LF endings)
+    {
+        if (( ${#current_items[@]} > 0 )); then
+            printf "%s\n" "${current_items[@]}" | sort
+        fi
+    } > "$OUTPUT"
+
+    printf "✓ Captured %d login item(s) to %s\n" "${#current_items[@]}" "$OUTPUT"
+    exit 0
 fi
 
 if (( DIFF_MODE == 0 )); then
