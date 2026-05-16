@@ -268,6 +268,44 @@ rm ~/.local/share/chezmoi/Brewfile.local
 chezmoi apply -v   # brewfile hook re-runs, picks up canonical Brewfile
 ```
 
+### Archetype persistence (chezmoi data var)
+
+Starting with slice 2b, the chosen archetype is stored persistently in
+`~/.config/chezmoi/chezmoi.toml` under `[data]`:
+
+```toml
+[data]
+  brewfile_archetype = "minimal-dev"
+```
+
+**When it's prompted:** once during `bootstrap.sh setup` (via `gum choose`
+before `chezmoi init`). On subsequent `chezmoi apply` runs on the same
+machine it is never re-asked (`promptChoiceOnce` semantics). On a fresh
+machine setup, chezmoi prompts for it again.
+
+**Auto-regenerate behavior:** the brewfile hook
+(`run_onchange_20-apply-brewfile.sh.tmpl`) applies this logic on every
+`chezmoi apply`:
+
+1. If `Brewfile.local` already exists → use it as-is (manual customization
+   always wins).
+2. Else if archetype is `custom` → fall back to the canonical `Brewfile`
+   (no auto-pick; `custom` requires interactive selection).
+3. Else → call `customize-brewfile.sh --archetype <name> --no-install` to
+   generate `Brewfile.local` from the archetype, then use it.
+
+This means a fresh `chezmoi apply` on a new machine (no `Brewfile.local`)
+will automatically produce the correct `Brewfile.local` from the stored
+archetype without any user interaction.
+
+**How to change archetype after setup:**
+
+```bash
+nvim ~/.config/chezmoi/chezmoi.toml   # change brewfile_archetype = "full"
+rm ~/.local/share/chezmoi/Brewfile.local
+chezmoi apply                          # hook regenerates Brewfile.local from new archetype
+```
+
 ### Sections in the canonical Brewfile
 
 The customizer parses sections from `# ── Title ──` headers. The current
@@ -703,6 +741,61 @@ bootstrap.sh doctor --check=macos-defaults
 **Color and pipe-safe output:**
 
 Output is plain text by default so `bootstrap.sh doctor | grep WARN` works. Pass `--color` to enable ANSI colors; the script also auto-detects a TTY and enables color automatically when stdout is a terminal.
+
+---
+
+## `dot` CLI
+
+Unified namespace for dotforge operations, installed at `~/.local/bin/dot` via chezmoi on every `chezmoi apply`.
+
+### Subcommands
+
+| Subcommand | Description |
+|---|---|
+| `doctor [--check=<name>]` | Run read-only diagnostic checks — identical to `bootstrap.sh doctor` |
+| `help` | Show usage and available subcommands |
+| `version` | Print repo HEAD short hash and branch name |
+
+`apply`, `snapshot`, and `pull` are coming in slice 2c.
+
+### Example: `dot help`
+
+```
+dotforge dot — unified CLI for diagnostics and configuration
+
+Usage:
+  dot [SUBCOMMAND] [OPTIONS]
+
+Subcommands:
+  doctor [--check=<name>]       run read-only diagnostic checks
+  help, -h, --help              show this help message
+  version                        print version and branch
+
+Options (doctor):
+  --check=<name>                run a single named check
+  --color, --no-color           force or disable ANSI colors
+
+Named checks: chezmoi, brewfile, cli-globals, curl-toolchains,
+              ssh-keys, macos-defaults, login-autostart, repo
+
+Exit codes:
+  0                             all checks passed
+  1                             one or more warnings
+  2                             one or more failures
+
+Coming in slice 2c: apply, snapshot, pull
+```
+
+### Usage
+
+```bash
+dot doctor                    # full 8-check diagnostic (= bootstrap.sh doctor)
+dot doctor --check=brewfile   # single-check mode
+dot version                   # e.g. "dotforge abc1234 on main"
+dot help                      # print usage
+```
+
+The `dot` binary is placed at `chezmoi/dot_local/bin/executable_dot` in the repo and lands at `~/.local/bin/dot` after `chezmoi apply`. Ensure `~/.local/bin` is in your `$PATH` (the managed `.zshrc` includes it).
 
 ---
 
@@ -1159,17 +1252,14 @@ regenerate `~/.config/chezmoi/chezmoi.toml`.
 
 ## What is not yet covered
 
-These are intentionally left for **Plan 2** (`docs/superpowers/plans/`):
+These are intentionally left for **Plan 2 / Plan 3** (`docs/superpowers/plans/`):
 
-- **First-class archetypes / feature flags persisted in chezmoi data** —
-  the Brewfile customizer above covers the "pick a subset" use case
-  without restructuring the repo, but the chosen archetype lives in a
-  one-off `Brewfile.local` rather than `~/.config/chezmoi/chezmoi.toml`,
-  so re-running `chezmoi init` on a new machine doesn't carry the
-  archetype forward. Plan 2 will promote `archetype` and a `features`
-  list into `[data]`, where templates can reference them.
-- **`dot` CLI** — convenience wrapper providing `dot apply`, `dot doctor`,
-  `dot snapshot`, `dot pull`, etc.
+- **`dot apply` / `dot snapshot` / `dot pull`** — the remaining `dot` CLI
+  subcommands for unified chezmoi + brew + macOS state operations (slice 2c).
+  `dot doctor`, `dot help`, and `dot version` are already shipped.
+- **Feature flags persisted in chezmoi data** — toggle docker-desktop,
+  jetbrains, local-llm, etc. declared inside archetypes (slice 2d). Archetype
+  persistence (`brewfile_archetype` in `chezmoi.toml`) is already shipped.
 - **Multi-machine sync** — Plan 3 territory: keeping personal-mac-mini
   and personal-mbp aligned through the repo.
 - **Non-brew toolchain installers** — automating `oh-my-zsh`, `nvm`,
