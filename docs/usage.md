@@ -525,8 +525,8 @@ classifies every binary in PATH as one of:
 | `pnpm` | pnpm global (`~/Library/pnpm` or `$PNPM_HOME`) |
 | `cargo` | Rust crate (`~/.cargo/bin`) |
 | `go` | Go binary (`$GOBIN` or `$GOPATH/bin` or `~/go/bin`) |
-| `pip` | Python user package (`~/.local/bin`, pyenv user-base) |
-| `thirdparty` | `/usr/local/bin` (cask helpers like Docker's `kubectl`, or hand-installed) |
+| `pip` | Python user package (`~/.local/bin`) |
+| `thirdparty` | `/usr/local/bin` CLIs placed there by a cask's pkg installer (Docker's `kubectl`, Tailscale's `tailscale`) or installed by hand. Skipped on Intel Macs, where `brew --prefix == /usr/local`. The cask itself shows up under `cask`. |
 | `uncategorized` | Everything else — typically curl-installed tools (e.g. `~/.maestro/bin`) |
 
 ### Capturing globals for replay
@@ -534,6 +534,11 @@ classifies every binary in PATH as one of:
 ```bash
 bootstrap.sh scan-cli --capture
 ```
+
+Requires the repo to be cloned (`bootstrap.sh setup` first on a fresh
+Mac). The existing `cli-globals.txt` is copied to `cli-globals.txt.bak`
+before being overwritten, so manual edits (e.g. curated `go:` entries)
+are recoverable.
 
 Writes `cli-globals.txt` with lines like:
 
@@ -546,8 +551,10 @@ cargo:zoxide
 ```
 
 Commit + push it. The chezmoi hook
-`run_onchange_30-install-cli-globals.sh` runs on the next `chezmoi
-apply` (or `bootstrap.sh update`) on any machine and replays the file:
+`run_onchange_30-install-cli-globals.sh.tmpl` runs on the next `chezmoi
+apply` (or `bootstrap.sh update`) on any machine and replays the file.
+The template embeds a sha256 of `cli-globals.txt` so chezmoi re-runs the
+hook whenever the file changes. Per-line behavior:
 
 - `npm install -g <pkg>` for each `npm:` line (skipped if `npm` isn't on
   PATH; install nvm first)
@@ -1007,18 +1014,28 @@ across `bw` versions and mocking.
 │       └── specs/
 └── chezmoi/                     # chezmoi source dir (per .chezmoiroot)
     ├── .chezmoi.toml.tmpl       # generates ~/.config/chezmoi/chezmoi.toml
+    ├── .chezmoiignore           # paths under ~/.claude excluded from management
     ├── private_dot_zshrc.tmpl   # ~/.zshrc, mode 0600
     ├── dot_gitconfig.tmpl       # ~/.gitconfig
     ├── private_dot_ssh/
     │   └── config.tmpl          # ~/.ssh/config (parent ~/.ssh/ at 0700)
     ├── dot_claude/
     │   ├── settings.json        # ~/.claude/settings.json
+    │   ├── CLAUDE.md            # tracked global Claude instructions
+    │   ├── skills/              # tracked skills (graphify, session-handoff)
     │   └── private_plugins/     # ~/.claude/plugins/, mode 0700
     └── .chezmoiscripts/
         ├── run_once_before_10-install-bw.sh
         ├── run_onchange_20-apply-brewfile.sh.tmpl
+        ├── run_onchange_30-install-cli-globals.sh.tmpl  # replays cli-globals.txt
         └── run_onchange_50-pull-ssh-keys.sh.tmpl
 ```
+
+`chezmoi/.chezmoiignore` lists `~/.claude/` subdirectories whose contents
+are session/state noise (history.jsonl, todos, projects, plans, …) and
+must stay machine-local. Adding a new managed path under `dot_claude/`
+generally requires no change to `.chezmoiignore`; adding a new noisy
+sibling does — see the file's header for the current exclusion list.
 
 ---
 
