@@ -83,9 +83,9 @@ BASELINE=(
     "Keyboard|-g|NSAutomaticDashSubstitutionEnabled|bool|false"
     "Keyboard|-g|NSAutomaticQuoteSubstitutionEnabled|bool|false"
     # Trackpad
-    "Trackpad|com.apple.AppleMultitouchTrackpad|Clicking|bool|true"
-    "Trackpad|com.apple.driver.AppleBluetoothMultitouch.trackpad|Clicking|bool|true"
-    "Trackpad|-g|com.apple.mouse.tapBehavior|int|1"
+    "Trackpad|com.apple.AppleMultitouchTrackpad|Clicking|bool|false"
+    "Trackpad|com.apple.driver.AppleBluetoothMultitouch.trackpad|Clicking|bool|false"
+    "Trackpad|-g|com.apple.mouse.tapBehavior|int|0"
     "Trackpad|-g|com.apple.trackpad.scaling|float|1.5"
     # UI
     "UI|-g|NSWindowResizeTime|float|0.001"

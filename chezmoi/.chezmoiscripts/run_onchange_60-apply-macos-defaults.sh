@@ -82,9 +82,10 @@ defaults write -g NSAutomaticDashSubstitutionEnabled -bool false
 defaults write -g NSAutomaticQuoteSubstitutionEnabled -bool false
 
 # ── Trackpad ──
-defaults write com.apple.AppleMultitouchTrackpad Clicking -bool true
-defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool true
-defaults write -g com.apple.mouse.tapBehavior -int 1
+# tap-to-click disabled — prefer the physical click everywhere
+defaults write com.apple.AppleMultitouchTrackpad Clicking -bool false
+defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool false
+defaults write -g com.apple.mouse.tapBehavior -int 0
 defaults write -g com.apple.trackpad.scaling -float 1.5
 
 # ── UI ──
