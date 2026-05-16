@@ -1,0 +1,10 @@
+# Login items — apps that should auto-open when you log in.
+#
+# Format: one absolute path per line. Lines starting with # are comments.
+# Use `bootstrap.sh scan-autostart` to dump your current Mac's login items
+# in this exact format, then prune/add by hand.
+#
+# Example entries (uncomment to enable):
+# /Applications/Rectangle.app
+# /Applications/Hidden Bar.app
+# /Applications/Raycast.app
