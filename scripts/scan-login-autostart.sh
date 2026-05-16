@@ -49,8 +49,11 @@ printf "\n# ── Login Items ──\n"
 printf "# (paste into login-items.txt — one /Applications/Foo.app per line)\n"
 
 raw_items=""
-raw_items="$(osascript -e 'tell application "System Events" to get the path of every login item' 2>&1)"
-osascript_rc=$?
+if raw_items="$(osascript -e 'tell application "System Events" to get the path of every login item' 2>&1)"; then
+    osascript_rc=0
+else
+    osascript_rc=$?
+fi
 if (( osascript_rc != 0 )); then
     if (( CAPTURE_MODE == 1 )); then
         log_error "osascript failed (exit $osascript_rc): $raw_items"
