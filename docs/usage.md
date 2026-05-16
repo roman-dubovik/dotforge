@@ -672,11 +672,10 @@ dotforge doctor — 2026-05-16T18:23
 [OK]   Curl-toolchains       8/8 installed
 [OK]   SSH keys              2 keys present (personal scope)
 [WARN] macOS defaults        3 keys diverge from baseline (run scan-macos --diff)
-[OK]   Login items           5 items match baseline
-[OK]   LaunchAgents          0 chezmoi-managed (no drift)
+[OK]   Login items           matches baseline; 0 chezmoi-managed LaunchAgents
 [OK]   Repo                  up to date with origin/main
 
-Summary: 7 OK, 2 WARN, 0 FAIL
+Summary: 6 OK, 2 WARN, 0 FAIL
 ```
 
 **Exit codes:**
