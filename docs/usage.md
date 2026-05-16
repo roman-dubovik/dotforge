@@ -659,6 +659,47 @@ bootstrap.sh scan-autostart --diff    # show login items that diverge from login
 
 ---
 
+## Diagnostic — `bootstrap.sh doctor`
+
+Read-only sync check: runs 8 checks against canonical state and reports which areas are in sync or have drifted. Nothing is modified — safe to run at any time, including from cron or CI.
+
+```
+dotforge doctor — 2026-05-16T18:23
+
+[OK]   chezmoi state         no pending changes
+[WARN] Brewfile              2 missing: htop, lazydocker
+[OK]   CLI globals           9/9 npm packages present
+[OK]   Curl-toolchains       8/8 installed
+[OK]   SSH keys              2 keys present (personal scope)
+[WARN] macOS defaults        3 keys diverge from baseline (run scan-macos --diff)
+[OK]   Login items           5 items match baseline
+[OK]   LaunchAgents          0 chezmoi-managed (no drift)
+[OK]   Repo                  up to date with origin/main
+
+Summary: 7 OK, 2 WARN, 0 FAIL
+```
+
+**Exit codes:**
+
+- `0` — all checks OK
+- `1` — at least one WARN, no FAIL (drift exists but the setup is functional)
+- `2` — at least one FAIL (e.g. chezmoi not initialized — fundamentally broken setup)
+
+**Single-check debugging:**
+
+Pass `--check=<name>` to run only one check. Valid names: `chezmoi`, `brewfile`, `cli-globals`, `curl-toolchains`, `ssh-keys`, `macos-defaults`, `login-autostart`, `repo`. Exit code reflects that check alone.
+
+```bash
+bootstrap.sh doctor --check=brewfile
+bootstrap.sh doctor --check=macos-defaults
+```
+
+**Color and pipe-safe output:**
+
+Output is plain text by default so `bootstrap.sh doctor | grep WARN` works. Pass `--color` to enable ANSI colors; the script also auto-detects a TTY and enables color automatically when stdout is a terminal.
+
+---
+
 ## Profiles
 
 `profile` is a single string (`personal` or `work`) that gates conditional
