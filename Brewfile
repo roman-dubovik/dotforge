@@ -129,9 +129,6 @@ mas "Microsoft Word",          id: 462054704
 #   - eno                   (source URL TBD — please update)
 #   - stagewise (Pre-Release) https://github.com/stagewise-io/stagewise
 #
-# Non-brew toolchains installed via curl/installer (covered by Plan 1.5):
-#   - oh-my-zsh        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-#   - powerlevel10k    git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
-#   - nvm              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
-#   - pnpm             curl -fsSL https://get.pnpm.io/install.sh | sh -
-#   - maestro          curl -Ls "https://get.maestro.mobile.dev" | bash
+# Non-brew toolchains (oh-my-zsh, powerlevel10k, nvm, pnpm, maestro) are
+# installed automatically by chezmoi hook:
+#   chezmoi/.chezmoiscripts/run_onchange_25-install-curl-toolchains.sh
