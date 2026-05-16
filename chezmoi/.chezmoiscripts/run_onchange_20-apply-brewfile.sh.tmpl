@@ -19,7 +19,8 @@ ARCHETYPE="{{ index . "brewfile_archetype" | default "" }}"
 # not "custom" (custom requires interactive selection) and not empty.
 if [[ ! -f "$BREWFILE_LOCAL" ]] && [[ -n "$ARCHETYPE" ]] && [[ "$ARCHETYPE" != "custom" ]]; then
     echo "[brewfile-hook] Brewfile.local absent; generating from archetype '$ARCHETYPE'..."
-    if ! bash "$REPO_ROOT/scripts/customize-brewfile.sh" --archetype "$ARCHETYPE" --no-install; then
+    if ! bash "$REPO_ROOT/scripts/customize-brewfile.sh" --archetype "$ARCHETYPE" --no-install --non-interactive; then
+        rm -f "$BREWFILE_LOCAL"  # defensive: ensure no partial file confuses next-block guard
         echo "[brewfile-hook] WARN: customize-brewfile.sh failed; falling back to canonical Brewfile" >&2
     fi
 fi
