@@ -12,6 +12,17 @@
 #
 # Idempotent: each install command is gated on a "is it already there"
 # check. Network failures don't abort the run, just print a warning.
+#
+# Re-run trigger: chezmoi re-executes run_onchange_* scripts when their
+# rendered content changes. We embed the sha256 of cli-globals.txt below
+# so edits to that file (which lives outside the chezmoi source dir)
+# cause this hook to fire on the next `chezmoi apply`. The `glob` guard
+# is so the template still renders cleanly when cli-globals.txt is
+# absent (e.g. a brand-new fork).
+{{- $globals := joinPath .chezmoi.sourceDir ".." "cli-globals.txt" -}}
+{{- range (glob $globals) }}
+# cli-globals.txt sha256: {{ include . | sha256sum }}
+{{- end }}
 
 set -uo pipefail
 
@@ -25,11 +36,17 @@ if [[ ! -f "$GLOBALS_FILE" ]]; then
 fi
 
 # Source nvm if available (provides npm via the user's default node version).
+# If `nvm use default` fails (no default alias set), warn loudly: a wrong
+# Node version means npm ls -g sees the wrong global package set, which
+# silently inflates "install" and "already installed" counts.
 export NVM_DIR="$HOME/.nvm"
 if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck source=/dev/null
     . "$NVM_DIR/nvm.sh" --no-use 2>/dev/null
-    nvm use default >/dev/null 2>&1 || true
+    if ! nvm use default >/dev/null 2>&1; then
+        echo "  ⚠ nvm has no 'default' alias — npm ls -g will use whatever node is on PATH (or skip if absent)" >&2
+        echo "    fix: nvm alias default <version>" >&2
+    fi
 fi
 
 # pnpm
@@ -38,6 +55,15 @@ case ":$PATH:" in
     *":$PNPM_HOME:"*) ;;
     *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
+
+ERR_LOG="$(mktemp -t dotforge-cli-err.XXXXXX)"
+trap 'rm -f "$ERR_LOG"' EXIT
+
+# Print captured stderr indented under the failure line.
+show_err() {
+    [[ -s "$ERR_LOG" ]] && sed 's/^/    /' "$ERR_LOG" >&2
+    : > "$ERR_LOG"
+}
 
 n_installed=0
 n_skipped=0
@@ -61,15 +87,20 @@ while IFS= read -r line; do
                 n_skipped=$((n_skipped+1))
                 continue
             fi
-            if npm ls -g --depth=0 --parseable 2>/dev/null | grep -qE "/$pkg(@|\$)"; then
+            # Exact-match on the basename to avoid ERE injection from
+            # scoped names (@anthropic-ai/sdk) or names with regex metachars.
+            if npm ls -g --depth=0 --parseable 2>/dev/null \
+                | awk -F'/node_modules/' -v p="$pkg" 'NF>1 && $NF == p {found=1} END {exit !found}'; then
                 n_already=$((n_already+1))
                 continue
             fi
             echo "→ npm install -g $pkg"
-            if npm install -g "$pkg" >/dev/null 2>&1; then
+            : > "$ERR_LOG"
+            if npm install -g "$pkg" >"$ERR_LOG" 2>&1; then
                 n_installed=$((n_installed+1))
             else
-                echo "  ⚠ npm install failed: $pkg"
+                echo "  ⚠ npm install failed: $pkg" >&2
+                show_err
                 n_failed=$((n_failed+1))
             fi
             ;;
@@ -79,15 +110,18 @@ while IFS= read -r line; do
                 n_skipped=$((n_skipped+1))
                 continue
             fi
-            if pnpm list -g --depth=0 --parseable 2>/dev/null | grep -qE "/$pkg(@|\$)"; then
+            if pnpm list -g --depth=0 --parseable 2>/dev/null \
+                | awk -F'/node_modules/' -v p="$pkg" 'NF>1 && $NF == p {found=1} END {exit !found}'; then
                 n_already=$((n_already+1))
                 continue
             fi
             echo "→ pnpm add -g $pkg"
-            if pnpm add -g "$pkg" >/dev/null 2>&1; then
+            : > "$ERR_LOG"
+            if pnpm add -g "$pkg" >"$ERR_LOG" 2>&1; then
                 n_installed=$((n_installed+1))
             else
-                echo "  ⚠ pnpm add failed: $pkg"
+                echo "  ⚠ pnpm add failed: $pkg" >&2
+                show_err
                 n_failed=$((n_failed+1))
             fi
             ;;
@@ -97,15 +131,18 @@ while IFS= read -r line; do
                 n_skipped=$((n_skipped+1))
                 continue
             fi
-            if cargo install --list 2>/dev/null | grep -qE "^${pkg} "; then
+            if cargo install --list 2>/dev/null \
+                | awk -v p="$pkg" '$1 == p && /^[a-zA-Z]/ {found=1} END {exit !found}'; then
                 n_already=$((n_already+1))
                 continue
             fi
             echo "→ cargo install $pkg"
-            if cargo install "$pkg" >/dev/null 2>&1; then
+            : > "$ERR_LOG"
+            if cargo install "$pkg" >"$ERR_LOG" 2>&1; then
                 n_installed=$((n_installed+1))
             else
-                echo "  ⚠ cargo install failed: $pkg"
+                echo "  ⚠ cargo install failed: $pkg" >&2
+                show_err
                 n_failed=$((n_failed+1))
             fi
             ;;
@@ -123,15 +160,18 @@ while IFS= read -r line; do
                 n_skipped=$((n_skipped+1))
                 continue
             fi
-            if pip3 list --user --format=freeze 2>/dev/null | grep -qE "^${pkg}=="; then
+            if pip3 list --user --format=freeze 2>/dev/null \
+                | awk -F'==' -v p="$pkg" '$1 == p {found=1} END {exit !found}'; then
                 n_already=$((n_already+1))
                 continue
             fi
             echo "→ pip3 install --user $pkg"
-            if pip3 install --user "$pkg" >/dev/null 2>&1; then
+            : > "$ERR_LOG"
+            if pip3 install --user "$pkg" >"$ERR_LOG" 2>&1; then
                 n_installed=$((n_installed+1))
             else
-                echo "  ⚠ pip3 install failed: $pkg"
+                echo "  ⚠ pip3 install failed: $pkg" >&2
+                show_err
                 n_failed=$((n_failed+1))
             fi
             ;;
