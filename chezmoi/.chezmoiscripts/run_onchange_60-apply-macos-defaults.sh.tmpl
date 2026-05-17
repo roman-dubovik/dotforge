@@ -89,6 +89,17 @@ while IFS= read -r line; do
         fi
     done
 
+    # Defensive: skip lines with unbalanced quotes — read -ra cannot
+    # safely handle quoted values containing whitespace. Capture should
+    # always emit single-token values; future captures with spaces would
+    # corrupt here. Skip with warning rather than silently corrupt.
+    for t in "${tokens[@]:1}"; do
+        if [[ "$t" == \"* || "$t" == *\" ]]; then
+            log_warn "skipping line with unbalanced quote (token: $t): $line"
+            continue 2
+        fi
+    done
+
     # Call defaults binary directly with the remaining args — no shell
     # interpretation of values.
     if ! defaults "${tokens[@]:1}"; then
