@@ -12,6 +12,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=/dev/null
+source "$REPO_ROOT/lib/dot-apply-helpers.sh"
+
+# shellcheck source=/dev/null
 source "$REPO_ROOT/lib/log.sh" 2>/dev/null || {
     # fallback no-op loggers if lib/log.sh missing (shouldn't happen in normal flow)
     log_info()    { printf "%s\n" "$*"; }
@@ -95,26 +98,6 @@ bash "$REPO_ROOT/scripts/doctor.sh" --no-color > "$AFTER" 2>&1 || doctor_rc=$?
 # Print transitions and current state.
 
 log_section "Health delta"
-
-# Extract status and label from a doctor snapshot file.
-# Output: "<STATUS> <label>" — one line per status line, status is OK/WARN/FAIL.
-# Label width is hardcoded to 22 chars (doctor.sh %-22s format). New doctor
-# checks must use ≤22-char labels or delta extraction will silently truncate.
-extract_status_labels() {
-    local file="$1"
-    local line status label
-    while IFS= read -r line; do
-        # Match [OK], [WARN], or [FAIL] at the start; skip non-status lines.
-        if [[ "$line" =~ ^\[(OK|WARN|FAIL)\] ]]; then
-            status="${BASH_REMATCH[1]}"
-            # Label is at fixed offset 7, width 22 (from doctor.sh %-6s + space + %-22s).
-            label="${line:7:22}"
-            # Strip trailing spaces from the padded label.
-            label="${label%"${label##*[![:space:]]}"}"
-            printf "%s %s\n" "$status" "$label"
-        fi
-    done < "$file"
-}
 
 # Build parallel indexed arrays: label -> status (before and after).
 # bash 3.2 compat — no declare -A.

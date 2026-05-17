@@ -27,7 +27,7 @@ Run `bootstrap.sh` with one of these subcommands:
 - `setup` — full Mac bootstrap
 - `update` — chezmoi update + apply
 - `sync` — promote local extras into the canonical Brewfile
-- `customize` — re-pick Brewfile sections
+- `customize` — re-pick Brewfile sections and toggle feature flags (docker, AI assistants, VPN suite, etc.)
 - `add-key` — upload SSH keys to Bitwarden (bulk or single)
 - `scan-cli` — classify everything in PATH; capture globals
 - `scan-macos` — print current macOS System Settings as `defaults write` commands
@@ -36,7 +36,7 @@ Run `bootstrap.sh` with one of these subcommands:
   - (or use `dot doctor` from PATH after `chezmoi apply` — same checks, same exit codes)
 - `apply` — apply chezmoi dotfiles + show before/after doctor delta; `--dry-run` previews diff
   - (or use `dot apply` from PATH after `chezmoi apply`)
-- `snapshot` — capture current machine state (CLI globals, login items) into canonical files + git commit; `--no-cli` / `--no-autostart` to skip individual scanners
+- `snapshot` — capture current machine state (CLI globals, login items, macOS defaults) into canonical files + git commit; `--no-cli` / `--no-autostart` / `--no-macos` to skip individual scanners
   - (or use `dot snapshot` from PATH after `chezmoi apply`)
 - `pull` — sync from origin (git pull --ff-only), chezmoi apply, doctor; strict bail on any error
   - (or use `dot pull` from PATH after `chezmoi apply`)
@@ -63,12 +63,13 @@ Each item has custom fields: `profile`, `created_at`, `fingerprint`, `algorithm`
 
 **Plan 1.5 — Closing the manual-step gap** (done) — Curl-toolchains hook (oh-my-zsh, p10k, nvm + Node LTS, pnpm, maestro, zsh plugins), macOS defaults hook (~35 keys across Dock/Finder/Screenshots/Keyboard/Trackpad/UI/Safari), `scan-macos` subcommand for snapshotting current state.
 
-**Plan 2 (in progress) — slices 2a + 2b shipped; `dot apply/snapshot/pull` + feature flags pending**:
+**Plan 2 — slices 2a–2d shipped**:
 - `bootstrap.sh doctor` — 8-check read-only diagnostic (chezmoi state, Brewfile, CLI globals, curl-toolchains, SSH keys, macOS defaults, login items, repo sync) — **done** (slice 1).
 - `dot` CLI namespace — `~/.local/bin/dot` shim installed via `chezmoi apply`; subcommands: `doctor`, `help`, `version` — **done** (slice 2a).
 - Persistent Brewfile archetypes — `brewfile_archetype` stored in `~/.config/chezmoi/chezmoi.toml`; hook auto-regenerates `Brewfile.local` on every `chezmoi apply` — **done** (slice 2b).
 - `dot apply` / `dot snapshot` / `dot pull` — unified chezmoi + brew + macOS state operations — **shipped 2026-05-16** (slice 2c).
-- Feature flags (toggle docker-desktop / jetbrains / local-llm) declared inside archetypes — **pending** (slice 2d).
+- Feature flags (`docker_desktop`, `ai_assistants`, `vpn_suite`, `office_suite`, `media_tools`, `design_tools`) + full macOS capture in `dot snapshot` (3 scanners: CLI globals, login items, macOS defaults) — **shipped 2026-05-17** (slice 2d).
+- Slice 2e (programmatic `dot apply --enable=X --disable=Y` + `local_llm` feature) — **pending**.
 
 **Plan 3 — Multi-machine sync** (pending) — active reconciliation between machines (e.g. detecting that mac-mini has a brew package mbp doesn't, or that one Mac drifted from the canonical state) with conflict resolution. Today distribution is one-way via chezmoi + git; two-tier Bitwarden items (`dotforge-ssh-<profile>` vs `dotforge-ssh-<profile>-<machine>`) handle key scoping but not state reconciliation.
 

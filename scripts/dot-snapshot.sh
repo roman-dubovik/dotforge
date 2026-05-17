@@ -2,10 +2,10 @@
 # dot snapshot — capture machine state to canonical files and offer a git commit.
 #
 # Usage:
-#   scripts/dot-snapshot.sh                  # scan CLI globals + login items, confirm, commit
+#   scripts/dot-snapshot.sh                  # scan CLI globals + login items + macOS defaults, confirm, commit
 #   scripts/dot-snapshot.sh --no-cli         # skip CLI globals scan
 #   scripts/dot-snapshot.sh --no-autostart   # skip login items scan
-#   scripts/dot-snapshot.sh --no-macos       # accepted (no-op, forward-compat)
+#   scripts/dot-snapshot.sh --no-macos       # skip macOS defaults scan
 #   scripts/dot-snapshot.sh --help|-h        # print this help
 
 set -euo pipefail
@@ -63,6 +63,7 @@ gum_input() {
 
 RUN_CLI=1
 RUN_AUTOSTART=1
+RUN_MACOS=1
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -71,10 +72,10 @@ while [[ $# -gt 0 ]]; do
 dot snapshot — capture machine state to canonical files and offer a git commit
 
 Usage:
-  dot snapshot               Scan CLI globals + login items, confirm per-file, commit.
+  dot snapshot               Scan CLI globals + login items + macOS defaults, confirm per-file, commit.
   dot snapshot --no-cli      Skip CLI globals scan (scan-cli --capture).
   dot snapshot --no-autostart  Skip login items scan (scan-login-autostart --capture).
-  dot snapshot --no-macos    Accepted (no-op; macOS defaults scanner not in scope yet).
+  dot snapshot --no-macos    Skip macOS defaults scan (scan-macos-defaults --capture).
   dot snapshot --help|-h     Print this help.
 
 Notes:
@@ -93,7 +94,7 @@ EOF
             shift
             ;;
         --no-macos)
-            # forward-compat alias; macOS scanner not in 2c scope
+            RUN_MACOS=0
             shift
             ;;
         *)
@@ -106,8 +107,8 @@ done
 
 # ── C2: nothing-to-snapshot guard ───────────────────────────────────────────
 
-if [[ $RUN_CLI -eq 0 && $RUN_AUTOSTART -eq 0 ]]; then
-    log_error "nothing to snapshot (both --no-cli and --no-autostart specified)"
+if [[ $RUN_CLI -eq 0 && $RUN_AUTOSTART -eq 0 && $RUN_MACOS -eq 0 ]]; then
+    log_error "nothing to snapshot (all scanners disabled: --no-cli, --no-autostart, --no-macos)"
     exit 2
 fi
 
@@ -121,7 +122,7 @@ fi
 
 # ── Compute total steps for progress display ─────────────────────────────────
 
-TOTAL_STEPS=$(( RUN_CLI + RUN_AUTOSTART ))
+TOTAL_STEPS=$(( RUN_CLI + RUN_AUTOSTART + RUN_MACOS ))
 CURRENT_STEP=0
 
 # ── C1: run sub-scanners ─────────────────────────────────────────────────────
@@ -140,6 +141,13 @@ if [[ $RUN_AUTOSTART -eq 1 ]]; then
     log_step "$CURRENT_STEP" "$TOTAL_STEPS" "scanning login items..."
     bash "$REPO_ROOT/scripts/scan-login-autostart.sh" --capture
     CAPTURED_FILES+=("login-items.txt")
+fi
+
+if [[ $RUN_MACOS -eq 1 ]]; then
+    CURRENT_STEP=$(( CURRENT_STEP + 1 ))
+    log_step "$CURRENT_STEP" "$TOTAL_STEPS" "scanning macOS defaults..."
+    bash "$REPO_ROOT/scripts/scan-macos-defaults.sh" --capture
+    CAPTURED_FILES+=("chezmoi/dot_config/dotforge/macos-defaults.txt")
 fi
 
 # ── C3: check for changes ─────────────────────────────────────────────────────

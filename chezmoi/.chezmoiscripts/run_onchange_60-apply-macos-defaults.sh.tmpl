@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# Apply macOS defaults read from $REPO_ROOT/chezmoi/dot_config/dotforge/macos-defaults.txt.
+#
+# Idempotent: `defaults write` overwrites the key with the same value on
+# re-runs — no observable side effect.
+#
+# DRY_RUN support: set DRY_RUN=1 to print "would: <command>" for every
+# defaults write without executing, and skip the killall at the end.
+#
+# chezmoi re-runs this script when macos-defaults.txt content changes (via
+# data-hash embedded in this template) or when the script itself changes.
+#   data-hash={{ output "shasum" "-a" "256" (joinPath .chezmoi.sourceDir "dot_config/dotforge/macos-defaults.txt") | substr 0 8 }}
+#
+# Usage (chezmoi runs this automatically on change):
+#   chezmoi apply
+# Manual:
+#   bash chezmoi/.chezmoiscripts/run_onchange_60-apply-macos-defaults.sh.tmpl
+#   DRY_RUN=1 bash chezmoi/.chezmoiscripts/run_onchange_60-apply-macos-defaults.sh.tmpl
+
+set -uo pipefail
+
+SOURCE_PATH="$(chezmoi source-path 2>/dev/null || echo "$HOME/.local/share/chezmoi")"
+REPO_ROOT="${SOURCE_PATH%/chezmoi}"
+
+# shellcheck source=/dev/null
+. "$REPO_ROOT/lib/log.sh"
+
+# ── DRY_RUN shim ──
+# Shadow the `defaults` binary so the loop can stay verbatim.
+defaults() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        echo "would: defaults $*"
+        return 0
+    else
+        command defaults "$@"
+    fi
+}
+
+log_info "Applying macOS defaults..."
+
+# ── Screenshots directory (not in macos-defaults.txt) ──
+if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    echo "would: mkdir -p $HOME/Pictures/Screenshots"
+else
+    mkdir -p "$HOME/Pictures/Screenshots"
+fi
+
+# ── Read defaults from file ──
+DEFAULTS_FILE="$REPO_ROOT/chezmoi/dot_config/dotforge/macos-defaults.txt"
+
+if [[ ! -f "$DEFAULTS_FILE" ]]; then
+    log_warn "macOS defaults file not found at $DEFAULTS_FILE — skipping (run 'dot snapshot' to create one)"
+    exit 0
+fi
+
+count=0
+failed=0
+skipped=0
+while IFS= read -r line; do
+    # Skip comments and blank lines
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+
+    # Parse via read -ra (NOT eval — file is trusted but values could contain
+    # shell metachars; eval would execute arbitrary code).
+    read -ra tokens <<<"$line"
+
+    # Sanity check: first token MUST be literal "defaults"
+    if [[ "${tokens[0]:-}" != "defaults" ]]; then
+        log_warn "skipping non-defaults line: $line"
+        continue
+    fi
+
+    # Strip surrounding ASCII double-quotes from each token (read -ra keeps
+    # them literal; defaults binary does not want them).
+    for i in "${!tokens[@]}"; do
+        t="${tokens[$i]}"
+        [[ "$t" == \"*\" ]] && tokens[i]="${t:1:${#t}-2}"
+    done
+
+    # Expand literal $HOME/ prefix in token values (written by scan --capture
+    # to keep macos-defaults.txt portable across users).
+    for i in "${!tokens[@]}"; do
+        t="${tokens[$i]}"
+        # SC2016: comparison uses literal $HOME/ intentionally — we match the
+        # un-expanded token as written in the file.
+        # shellcheck disable=SC2016
+        if [[ "$t" == '$HOME/'* ]]; then
+            tokens[i]="$HOME/${t#'$HOME/'}"
+        fi
+    done
+
+    # Defensive: skip lines with unbalanced quotes — read -ra cannot
+    # safely handle quoted values containing whitespace. Capture should
+    # always emit single-token values; future captures with spaces would
+    # corrupt here. Skip with warning rather than silently corrupt.
+    for t in "${tokens[@]:1}"; do
+        if [[ "$t" == \"* || "$t" == *\" ]]; then
+            log_warn "skipping line with unbalanced quote (token: $t): $line"
+            skipped=$((skipped + 1))
+            continue 2
+        fi
+    done
+
+    # Call defaults binary directly with the remaining args — no shell
+    # interpretation of values.
+    if ! defaults "${tokens[@]:1}"; then
+        log_warn "defaults ${tokens[*]:1} failed — continuing"
+        failed=$((failed + 1))
+    else
+        count=$((count + 1))
+    fi
+done < "$DEFAULTS_FILE"
+
+# ── Restart affected services ──
+if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    echo "would: killall Dock Finder SystemUIServer"
+else
+    killall Dock Finder SystemUIServer 2>/dev/null || true
+fi
+
+if (( failed > 0 || skipped > 0 )); then
+    log_warn "═══════════════════════════════════════════════════════════"
+    log_warn "macOS defaults: $count applied, $failed FAILED, $skipped skipped (unbalanced quotes)"
+    log_warn "Run 'sudo dot doctor --check=macos-defaults' to investigate."
+    log_warn "═══════════════════════════════════════════════════════════"
+    # Exit 0 so chezmoi continues with run_onchange_70 etc.
+    # Per slice 2d retrospective: blocking the apply pipeline on a single failed
+    # defaults write hurts more than it helps (login-autostart hook would be missed).
+fi
+
+if (( skipped > 0 )); then
+    log_info "Applied $count macOS defaults ($skipped lines skipped — see warnings above)"
+else
+    log_info "Applied $count macOS defaults"
+fi

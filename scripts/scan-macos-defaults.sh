@@ -6,11 +6,12 @@
 # Usage:
 #   scripts/scan-macos-defaults.sh           # print all keys (current values)
 #   scripts/scan-macos-defaults.sh --diff    # print only keys that diverge from baseline
+#   scripts/scan-macos-defaults.sh --capture # write all current values to chezmoi/dot_config/dotforge/macos-defaults.txt
 #
 # Output format:
 #   # ── <Section> ──
 #   defaults write <domain> <key> -<type> <current-value>
-#   # <domain> <key>: (not set)   ← when key is absent
+#   (in --capture mode, keys absent on this machine use the baseline default value)
 #
 # Type mapping from `defaults read-type` output:
 #   Type is boolean  → -bool  (value: 0→false, 1→true)
@@ -31,9 +32,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ── Option parsing ──
 DIFF_MODE=0
+CAPTURE_MODE=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --diff)   DIFF_MODE=1; shift ;;
+        --diff)    DIFF_MODE=1; shift ;;
+        --capture) CAPTURE_MODE=1; shift ;;
         --help|-h)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
             exit 0
@@ -41,6 +44,11 @@ while [[ $# -gt 0 ]]; do
         *)  printf "Unknown argument: %s\n" "$1" >&2; exit 2 ;;
     esac
 done
+
+if (( CAPTURE_MODE == 1 && DIFF_MODE == 1 )); then
+    printf "Error: --capture and --diff are mutually exclusive.\n" >&2
+    exit 2
+fi
 
 # ── Baseline table ──
 # Format: <section>|<domain>|<key>|<type>|<baseline-value>
@@ -160,6 +168,94 @@ values_equal() {
     esac
     [[ "$normalized_current" == "$baseline" ]]
 }
+
+# ── Capture mode ──
+
+if (( CAPTURE_MODE == 1 )); then
+    OUTPUT="$REPO_ROOT/chezmoi/dot_config/dotforge/macos-defaults.txt"
+    mkdir -p "$(dirname "$OUTPUT")"
+    if [[ -f "$OUTPUT" ]]; then cp "$OUTPUT" "${OUTPUT}.bak"; fi
+
+    TMP="$(mktemp -t macos-defaults.XXXXXX)"
+    trap 'rm -f "$TMP"' EXIT
+
+    # Discover section order from BASELINE (preserving declaration order)
+    # Use a newline-delimited string to track seen sections (bash 3.2 compatible)
+    declare -a SECTION_ORDER=()
+    _seen_sections=""
+    for _entry in "${BASELINE[@]:-}"; do
+        case "$_entry" in \#*) continue ;; esac
+        _section="${_entry%%|*}"
+        if [[ "$_seen_sections" != *$'\n'"$_section"$'\n'* ]]; then
+            _seen_sections+=$'\n'"$_section"$'\n'
+            SECTION_ORDER+=("$_section")
+        fi
+    done
+
+    count=0
+    for _sec in "${SECTION_ORDER[@]:-}"; do
+        printf "\n# ── %s ──\n" "$_sec" >> "$TMP"
+
+        # Collect entries for this section into a sortable list
+        declare -a _entries=()
+        for _entry in "${BASELINE[@]:-}"; do
+            case "$_entry" in \#*) continue ;; esac
+            _esec="${_entry%%|*}"
+            if [[ "$_esec" == "$_sec" ]]; then
+                _entries+=("$_entry")
+            fi
+        done
+
+        # Sort by key (field 3), then by domain (field 2) for tie-breaking
+        # Write sorted entries to a temp file for processing
+        _sorted="$(printf "%s\n" "${_entries[@]:-}" | sort -t '|' -k 3,3 -k 2,2)"
+
+        while IFS='|' read -r _s _domain _key _type _bval; do
+            # Check whether key exists before reading value.
+            if command defaults read-type "$_domain" "$_key" >/dev/null 2>&1; then
+                # Key exists — use actual stored type (may differ from baseline).
+                _actual_type="$(command defaults read-type "$_domain" "$_key" 2>/dev/null | awk '{print $NF}')"
+                case "$_actual_type" in
+                    boolean) _use_type="bool" ;;
+                    integer) _use_type="int"  ;;
+                    float)   _use_type="float" ;;
+                    string)  _use_type="string" ;;
+                    *)       _use_type="$_type" ;;  # fallback to baseline type
+                esac
+                if [[ "$_use_type" != "$_type" ]]; then
+                    printf "warn: %s %s actual type %s differs from baseline %s\n" \
+                        "$_domain" "$_key" "$_use_type" "$_type" >&2
+                fi
+                _raw="$(command defaults read "$_domain" "$_key" 2>/dev/null)"
+                # $HOME-relativize string values so they are portable across users.
+                # SC2016: literal '$HOME/' is intentional — expanded at apply time.
+                # shellcheck disable=SC2016
+                if [[ "$_use_type" == "string" && "$_raw" == "$HOME/"* ]]; then
+                    _raw='$HOME/'"${_raw#"$HOME/"}"
+                fi
+                _formatted="$(format_value "$_use_type" "$_raw")"
+                printf "defaults write %s %s -%s %s\n" "$_domain" "$_key" "$_use_type" "$_formatted" >> "$TMP"
+            else
+                # Key not set on this machine — fall back to baseline default value.
+                # $HOME-relativize baseline strings too, since BASELINE uses expanded $HOME.
+                # SC2016: literal '$HOME/' is intentional — expanded at apply time.
+                # shellcheck disable=SC2016
+                if [[ "$_type" == "string" && "$_bval" == "$HOME/"* ]]; then
+                    _bval='$HOME/'"${_bval#"$HOME/"}"
+                fi
+                _formatted="$(format_value "$_type" "$_bval")"
+                printf "defaults write %s %s -%s %s\n" "$_domain" "$_key" "$_type" "$_formatted" >> "$TMP"
+            fi
+            (( count++ )) || true
+        done <<< "$_sorted"
+
+        unset _entries
+    done
+
+    mv "$TMP" "$OUTPUT"
+    printf "✓ Captured %d macOS defaults to %s\n" "$count" "$OUTPUT"
+    exit 0
+fi
 
 # ── Main scan ──
 

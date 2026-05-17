@@ -174,6 +174,7 @@ Interactivity is wired at three layers:
 | Bootstrap | `bw login` / `bw unlock` | `bootstrap.sh` | Bitwarden email + master password (+ 2FA) |
 | Customizer | `gum choose` | `scripts/customize-brewfile.sh` | Archetype: `full` / `minimal-dev` / `cli-server` / `custom` |
 | Customizer | `gum choose --no-limit` | `scripts/customize-brewfile.sh` | Per-section toggle (when fine-tuning or `custom`) |
+| Customizer | `gum checkbox` | `scripts/customize-brewfile.sh` | Feature flags toggle (docker, AI, VPN suite, etc.) |
 | Customizer | `gum pager` | `scripts/customize-brewfile.sh` | Preview a section's content before installing |
 | Customizer | `gum confirm` | `scripts/customize-brewfile.sh` | Confirm install |
 | Xcode CLT | macOS native dialog | OS-managed | License acceptance |
@@ -190,9 +191,7 @@ Things deliberately **not interactive**:
 - SSH-key restoration silently skips if Bitwarden is locked (it logs a warning
   and exits 0, so the rest of `chezmoi apply` continues). On the next run
   with a valid `BW_SESSION`, the keys download.
-- Archetype selection (dev-machine / media / ops-server) and feature flags —
-  postponed to Plan 2. The Brewfile customizer (see below) covers the
-  90% case via section-level toggling without restructuring the repo.
+- Feature flag toggles (docker, AI assistants, VPN suite, etc.) are handled entirely through the `bootstrap.sh customize` menu — no extra prompts during `chezmoi apply`.
 
 ---
 
@@ -305,6 +304,66 @@ nvim ~/.config/chezmoi/chezmoi.toml   # change brewfile_archetype = "full"
 rm ~/.local/share/chezmoi/Brewfile.local
 chezmoi apply                          # hook regenerates Brewfile.local from new archetype
 ```
+
+### Feature flags
+
+Fine-grained package toggles sit on top of the archetype — they let you keep an archetype's section selection but opt specific packages in or out. Feature values are stored alongside `brewfile_archetype` in `[data.features]` inside `~/.config/chezmoi/chezmoi.toml`.
+
+#### Initial feature set
+
+| Feature | Default | What it controls |
+|---|:---:|---|
+| `docker_desktop` | true | `cask "docker-desktop"` |
+| `ai_assistants` | true | `cask "claude"`, `cask "chatgpt"` |
+| `vpn_suite` | true | `cask "tunnelblick"`, `cask "amneziavpn"`, `cask "anydesk"`, `cask "displaylink"`, `cask "termius"`, `cask "windows-app"` |
+| `office_suite` | false | `mas "Microsoft Word"`, `mas "Microsoft Excel"`, `mas "Microsoft PowerPoint"` |
+| `media_tools` | true | `brew "ffmpeg"`, `brew "yt-dlp"`, `brew "pandoc"`, `brew "tectonic"` |
+| `design_tools` | true | `cask "drawio"` |
+
+`office_suite` defaults to false because MAS installs require an Apple ID sign-in — enable it only when you're set up for that.
+
+#### Usage
+
+**Interactive — bootstrap customize menu:**
+
+```bash
+bootstrap.sh customize
+```
+
+After picking an archetype, the customizer shows a `gum checkbox` menu of all 6 features pre-selected to their current values from `~/.config/chezmoi/chezmoi.toml`. Toggle with space, confirm with enter. `Brewfile.local` is regenerated immediately using your selection.
+
+Fallback when `gum` is not installed: a `y/n` prompt is shown for each feature in sequence.
+
+> **Selection is one-shot, not persisted in slice 2d.** Your toggle choices apply to the regenerated `Brewfile.local`, but the underlying `[data.features]` values in `chezmoi.toml` are NOT updated by this menu. To persist new defaults, edit `~/.config/chezmoi/chezmoi.toml` manually (see below). Programmatic persistence ships in slice 2e.
+
+**Reading current values:**
+
+```bash
+grep -A 6 '\[data\.features\]' ~/.config/chezmoi/chezmoi.toml
+```
+
+Output example:
+
+```toml
+[data.features]
+  docker_desktop = true
+  ai_assistants = true
+  vpn_suite = true
+  office_suite = false
+  media_tools = true
+  design_tools = true
+```
+
+**Re-applying after editing `chezmoi.toml` manually:**
+
+```bash
+nvim ~/.config/chezmoi/chezmoi.toml   # change e.g. office_suite = true
+chezmoi apply --include=scripts -v    # or: dot apply
+```
+
+The brewfile hook (`run_onchange_20`) detects the feature change via a content hash in its version comment and re-runs `customize-brewfile.sh --enable=X --disable=Y` automatically.
+
+> **Programmatic toggle (`dot apply --enable=X --disable=Y`) is planned for slice 2e** — currently use the bootstrap customize menu OR edit `chezmoi.toml` manually and re-apply.
 
 ### Sections in the canonical Brewfile
 
@@ -754,7 +813,7 @@ Unified namespace for dotforge operations, installed at `~/.local/bin/dot` via c
 |---|---|
 | `doctor [--check=<name>]` | Run read-only diagnostic checks — identical to `bootstrap.sh doctor` |
 | `apply [--dry-run]` | Apply chezmoi dotfiles and show before/after doctor delta; `--dry-run` runs `chezmoi diff` without mutating |
-| `snapshot [--no-cli] [--no-autostart]` | Capture current machine state (CLI globals, login items) into canonical files and prompt for a git commit |
+| `snapshot [--no-cli] [--no-autostart] [--no-macos]` | Capture current machine state (CLI globals, login items, macOS defaults) into canonical files and prompt for a git commit — 3 scanners by default |
 | `pull` | Sync from origin: `git pull --ff-only`, `chezmoi apply`, then `dot doctor`; strict bail on any error |
 | `help` | Show usage and available subcommands |
 | `version` | Print repo HEAD short hash and branch name |
@@ -803,8 +862,9 @@ dot apply                     # chezmoi apply + before/after doctor delta (e.g. 
 dot apply --dry-run           # runs chezmoi diff, exits without writing anything
 
 # Capture current machine state after installing new tools
-dot snapshot                  # scan CLI globals + login items, then prompt per-file git commit
-dot snapshot --no-autostart   # skip login-items scan, only capture CLI globals
+dot snapshot                  # scan CLI globals + login items + macOS defaults, then prompt per-file git commit
+dot snapshot --no-autostart   # skip login-items scan
+dot snapshot --no-macos       # skip macOS defaults scan
 
 # Sync dotfiles from another machine (e.g. pulling changes made on mac-mini)
 dot pull                      # git pull --ff-only + chezmoi apply + dot doctor; bails on any error
@@ -1267,14 +1327,10 @@ regenerate `~/.config/chezmoi/chezmoi.toml`.
 
 ## What is not yet covered
 
-These are intentionally left for **Plan 2 / Plan 3** (`docs/superpowers/plans/`):
+These are intentionally left for **Plan 2e / Plan 3** (`docs/superpowers/plans/`):
 
-- **`dot apply` / `dot snapshot` / `dot pull`** — the remaining `dot` CLI
-  subcommands for unified chezmoi + brew + macOS state operations (slice 2c).
-  `dot doctor`, `dot help`, and `dot version` are already shipped.
-- **Feature flags persisted in chezmoi data** — toggle docker-desktop,
-  jetbrains, local-llm, etc. declared inside archetypes (slice 2d). Archetype
-  persistence (`brewfile_archetype` in `chezmoi.toml`) is already shipped.
+- **Programmatic feature toggle (`dot apply --enable=X --disable=Y`)** — slice 2e. Currently use `bootstrap.sh customize` or edit `~/.config/chezmoi/chezmoi.toml` manually and re-apply.
+- **`local_llm` feature flag** — deferred to slice 2e when ollama integration lands in the Brewfile.
 - **Multi-machine sync** — Plan 3 territory: keeping personal-mac-mini
   and personal-mbp aligned through the repo.
 - **Non-brew toolchain installers** — automating `oh-my-zsh`, `nvm`,
@@ -1283,8 +1339,7 @@ These are intentionally left for **Plan 2 / Plan 3** (`docs/superpowers/plans/`)
 - **Mac App Store automation** — the Brewfile lists `mas` entries, but
   `mas install` requires you to be signed in to the App Store first. Add
   a hook for this in Plan 2.
-- **macOS defaults** — system settings like keyboard repeat, Finder
-  hidden-file display, Dock auto-hide, etc. (`defaults write …`).
+- **App-specific config restore** — Raycast, VS Code/Cursor, JetBrains, iTerm/Warp profiles, Hammerspoon, Rectangle/BetterDisplay are not yet auto-restored.
 
 If you want to add any of these now without waiting, they slot naturally
 into the existing structure — see the plan docs for sketches.

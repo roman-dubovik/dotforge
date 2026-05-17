@@ -1,8 +1,22 @@
 {{- $machine_name := promptStringOnce . "machine_name" "Machine name (human-friendly, e.g. personal-mbp)" -}}
 {{- $profile := promptChoiceOnce . "profile" "Profile" (list "personal" "work") -}}
 {{- $brewfile_archetype := promptChoiceOnce . "brewfile_archetype" "Brewfile archetype" (list "full" "minimal-dev" "cli-server" "custom") "full" -}}
+{{- $docker := promptBoolOnce . "features.docker_desktop" "Install Docker Desktop?" true -}}
+{{- $ai := promptBoolOnce . "features.ai_assistants" "Install AI assistant casks (Claude, ChatGPT)?" true -}}
+{{- $vpn := promptBoolOnce . "features.vpn_suite" "Install VPN/remote suite (tunnelblick, anydesk, ...)?" true -}}
+{{- $office := promptBoolOnce . "features.office_suite" "Install Microsoft Office (Word, Excel, PowerPoint via MAS)?" false -}}
+{{- $media := promptBoolOnce . "features.media_tools" "Install media/docs tools (ffmpeg, yt-dlp, pandoc, tectonic)?" true -}}
+{{- $design := promptBoolOnce . "features.design_tools" "Install design tools (drawio)?" true -}}
 
 [data]
     machine_name        = {{ $machine_name | quote }}
     profile             = {{ $profile | quote }}
     brewfile_archetype  = {{ $brewfile_archetype | quote }}
+
+[data.features]
+    docker_desktop = {{ $docker }}
+    ai_assistants = {{ $ai }}
+    vpn_suite = {{ $vpn }}
+    office_suite = {{ $office }}
+    media_tools = {{ $media }}
+    design_tools = {{ $design }}

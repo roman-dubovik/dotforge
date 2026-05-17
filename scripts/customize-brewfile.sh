@@ -7,6 +7,8 @@
 #   customize-brewfile.sh --archetype custom       # opens multi-select
 #   customize-brewfile.sh --output Brewfile.local
 #   customize-brewfile.sh --no-install             # write file but skip install
+#   customize-brewfile.sh --enable=<feature>       # force-include a feature
+#   customize-brewfile.sh --disable=<feature>      # force-exclude a feature
 #
 # Archetypes:
 #   full        — everything in the canonical Brewfile
@@ -14,10 +16,39 @@
 #   cli-server  — pure CLI, no GUI / no MAS apps
 #   custom      — opens a multi-select to pick sections
 #
+# Feature flags (applied after section selection):
+#   docker_desktop  — cask "docker-desktop"                          (default: enabled)
+#   ai_assistants   — cask "claude", cask "chatgpt"                  (default: enabled)
+#   vpn_suite       — tunnelblick, amneziavpn, anydesk, displaylink,
+#                     termius, windows-app                            (default: enabled)
+#   office_suite    — mas Microsoft Word/Excel/PowerPoint             (default: disabled)
+#   media_tools     — brew ffmpeg, yt-dlp, pandoc, tectonic           (default: enabled)
+#   design_tools    — cask "drawio"                                   (default: enabled)
+#
 # After selection, runs `brew bundle install --file=<output>`. The chezmoi
 # brewfile hook prefers Brewfile.local over Brewfile when both are present.
 
 set -euo pipefail
+
+# ── Feature → pattern map (bash 3.2 compat: parallel indexed arrays, no -A) ──
+# Each FEATURE_PATTERNS[i] is an ERE matched against Brewfile lines.
+# Order must match FEATURE_NAMES[]; both arrays are zero-indexed.
+FEATURE_NAMES=(
+    "docker_desktop"
+    "ai_assistants"
+    "vpn_suite"
+    "office_suite"
+    "media_tools"
+    "design_tools"
+)
+FEATURE_PATTERNS=(
+    '^cask "docker-desktop"$'
+    '^cask "(claude|chatgpt)"$'
+    '^cask "(tunnelblick|amneziavpn|anydesk|displaylink|termius|windows-app)"'
+    '^mas "Microsoft (Word|Excel|PowerPoint)"'
+    '^brew "(ffmpeg|yt-dlp|pandoc|tectonic)"$'
+    '^cask "drawio"$'
+)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -26,6 +57,18 @@ OUTPUT="$REPO_ROOT/Brewfile.local"
 ARCHETYPE=""
 NO_INSTALL=0
 INTERACTIVE=1
+ENABLED_FEATURES=()
+DISABLED_FEATURES=()
+
+# Validate that a feature name is in FEATURE_NAMES[]; exit 2 if unknown.
+validate_feature() {
+    local f="$1" n
+    for n in "${FEATURE_NAMES[@]}"; do
+        [[ "$n" == "$f" ]] && return 0
+    done
+    printf "error: unknown feature '%s'. Supported: %s\n" "$f" "${FEATURE_NAMES[*]}" >&2
+    exit 2
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -40,6 +83,16 @@ while [[ $# -gt 0 ]]; do
         --brewfile)  BREWFILE="$2";  shift 2 ;;
         --no-install)     NO_INSTALL=1;   shift ;;
         --non-interactive) INTERACTIVE=0; shift ;;
+        --enable=*)
+            _feat="${1#--enable=}"
+            validate_feature "$_feat"
+            ENABLED_FEATURES+=("$_feat")
+            shift ;;
+        --disable=*)
+            _feat="${1#--disable=}"
+            validate_feature "$_feat"
+            DISABLED_FEATURES+=("$_feat")
+            shift ;;
         --help|-h)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
             exit 0
@@ -330,10 +383,56 @@ if (( INTERACTIVE == 1 )); then
     fi
 fi
 
+# ── Feature filter ──
+# Applies --disable and --enable transforms to a collected-output file in-place.
+# If a feature appears in both --enable and --disable, enable wins (applied last).
+#
+# Args: $1 = file to filter in place (modified atomically via .tmp sibling).
+apply_feature_filter() {
+    local target_file="$1" i feature pattern
+
+    # Apply disabled features: remove lines matching pattern.
+    if (( ${#DISABLED_FEATURES[@]} > 0 )); then
+        for feature in "${DISABLED_FEATURES[@]}"; do
+            for i in "${!FEATURE_NAMES[@]}"; do
+                if [[ "${FEATURE_NAMES[$i]}" == "$feature" ]]; then
+                    pattern="${FEATURE_PATTERNS[$i]}"
+                    grep -vE "$pattern" "$target_file" > "${target_file}.tmp" \
+                        && mv "${target_file}.tmp" "$target_file"
+                    break
+                fi
+            done
+        done
+    fi
+
+    # Apply enabled features: add matching lines from canonical Brewfile if absent.
+    # Lines are appended at the end of the file — brew bundle ignores section order.
+    if (( ${#ENABLED_FEATURES[@]} > 0 )); then
+        for feature in "${ENABLED_FEATURES[@]}"; do
+            for i in "${!FEATURE_NAMES[@]}"; do
+                if [[ "${FEATURE_NAMES[$i]}" == "$feature" ]]; then
+                    pattern="${FEATURE_PATTERNS[$i]}"
+                    matches=$(grep -cE "$pattern" "$BREWFILE" || true)
+                    if (( matches == 0 )); then
+                        printf "warn: --enable=%s matched no lines in %s — pattern may be stale\n" \
+                            "$feature" "$BREWFILE" >&2
+                    fi
+                    while IFS= read -r line; do
+                        if ! grep -qFx "$line" "$target_file"; then
+                            printf "%s\n" "$line" >> "$target_file"
+                        fi
+                    done < <(grep -E "$pattern" "$BREWFILE")
+                    break
+                fi
+            done
+        done
+    fi
+}
+
 # ── Step 4: write output ──
 
 OUTPUT_TMP="$(mktemp "${OUTPUT}.tmp.XXXXXX")"
-trap 'rm -rf "$TMPDIR_LOCAL"; rm -f "$OUTPUT_TMP"' EXIT
+trap 'rm -rf "$TMPDIR_LOCAL"; rm -f "$OUTPUT_TMP" "${OUTPUT_TMP}.tmp"' EXIT
 {
     printf "# Generated by scripts/customize-brewfile.sh on %s\n" "$(date '+%Y-%m-%d %H:%M:%S %z')"
     printf "# Archetype: %s\n" "$ARCHETYPE"
@@ -350,6 +449,12 @@ trap 'rm -rf "$TMPDIR_LOCAL"; rm -f "$OUTPUT_TMP"' EXIT
         printf "\n"
     done
 } > "$OUTPUT_TMP"
+
+# Apply feature filters (if any) before atomic rename.
+if (( ${#ENABLED_FEATURES[@]} > 0 )) || (( ${#DISABLED_FEATURES[@]} > 0 )); then
+    apply_feature_filter "$OUTPUT_TMP"
+fi
+
 mv -f "$OUTPUT_TMP" "$OUTPUT"
 trap 'rm -rf "$TMPDIR_LOCAL"' EXIT  # disarm OUTPUT_TMP cleanup now that output is in place
 

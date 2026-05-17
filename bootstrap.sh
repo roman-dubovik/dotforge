@@ -226,7 +226,82 @@ cmd_customize() {
     if [[ -z "$repo_root" || ! -x "$repo_root/scripts/customize-brewfile.sh" ]]; then
         err "Repo not cloned yet (run 'setup' first)."
     fi
-    bash "$repo_root/scripts/customize-brewfile.sh"
+
+    local feature_args=()
+
+    # Feature names and their defaults (bash 3.2 compat: parallel indexed arrays, no -A).
+    # Order must be consistent across all three arrays.
+    local features=(docker_desktop ai_assistants vpn_suite office_suite media_tools design_tools)
+    local defaults=(true         true          true      false        true         true)
+
+    # Read current values from chezmoi.toml; fall back to defaults if absent.
+    local chezmoi_toml="$HOME/.config/chezmoi/chezmoi.toml"
+    local current_values=()
+    local i
+    for i in "${!features[@]}"; do
+        local f="${features[$i]}" def="${defaults[$i]}" v=""
+        if [[ -f "$chezmoi_toml" ]]; then
+            v="$(grep -E "^[[:space:]]*${f}[[:space:]]*=" "$chezmoi_toml" 2>/dev/null \
+                 | sed -E 's/.*=[[:space:]]*(true|false).*/\1/' | head -1 || true)"
+        fi
+        [[ -z "$v" ]] && v="$def"
+        current_values+=("$v")
+    done
+
+    if [[ -t 0 ]] && command -v gum >/dev/null 2>&1; then
+        # Build pre-selected CSV: feature names where current value is true.
+        local preselect=""
+        for i in "${!features[@]}"; do
+            if [[ "${current_values[$i]}" == "true" ]]; then
+                [[ -n "$preselect" ]] && preselect+=","
+                preselect+="${features[$i]}"
+            fi
+        done
+
+        say "Select feature flags (space toggles, enter confirms):"
+        local selected_csv
+        if ! selected_csv="$(printf "%s\n" "${features[@]}" \
+            | gum choose --no-limit --selected="$preselect" \
+                --header "Feature flags (space=toggle, enter=confirm)")"; then
+            say "Menu cancelled — keeping current feature flags."
+        else
+            # Normalize newline-separated gum output to a comma-delimited membership set.
+            local selected_list
+            selected_list="${selected_csv//$'\n'/,},"  # trailing comma for grep
+            local f
+            for f in "${features[@]}"; do
+                if [[ ",${selected_list}" == *",${f},"* ]]; then
+                    feature_args+=("--enable=${f}")
+                else
+                    feature_args+=("--disable=${f}")
+                fi
+            done
+        fi
+    elif [[ ! -t 0 ]]; then
+        # Non-TTY: skip menu entirely, let customize-brewfile use its own defaults.
+        say "Non-interactive mode (no TTY): skipping feature menu, using defaults from chezmoi data."
+    else
+        # TTY but no gum: ask y/n for each feature.
+        say "gum not found — entering feature flags one by one (y/n):"
+        local f def_val prompt_val yn
+        for i in "${!features[@]}"; do
+            f="${features[$i]}"
+            def_val="${current_values[$i]}"
+            if [[ "$def_val" == "true" ]]; then
+                prompt_val="Y/n"
+            else
+                prompt_val="y/N"
+            fi
+            read -r -p "  Enable ${f}? [${prompt_val}] " yn </dev/tty
+            yn="${yn:-$def_val}"
+            case "$yn" in
+                [yY]*|true)  feature_args+=("--enable=${f}") ;;
+                *)           feature_args+=("--disable=${f}") ;;
+            esac
+        done
+    fi
+
+    bash "$repo_root/scripts/customize-brewfile.sh" ${feature_args[@]+"${feature_args[@]}"}
     say "If you want to apply the new Brewfile.local now, run:"
     echo "  chezmoi apply --include=scripts -v"
 }
