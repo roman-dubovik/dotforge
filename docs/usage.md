@@ -330,9 +330,11 @@ Fine-grained package toggles sit on top of the archetype — they let you keep a
 bootstrap.sh customize
 ```
 
-After picking an archetype, the customizer shows a `gum checkbox` menu of all 6 features pre-selected to their current values. Toggle with space, confirm with enter. The selection is written to `~/.config/chezmoi/chezmoi.toml` and `Brewfile.local` is regenerated immediately.
+After picking an archetype, the customizer shows a `gum checkbox` menu of all 6 features pre-selected to their current values from `~/.config/chezmoi/chezmoi.toml`. Toggle with space, confirm with enter. `Brewfile.local` is regenerated immediately using your selection.
 
 Fallback when `gum` is not installed: a `y/n` prompt is shown for each feature in sequence.
+
+> **Selection is one-shot, not persisted in slice 2d.** Your toggle choices apply to the regenerated `Brewfile.local`, but the underlying `[data.features]` values in `chezmoi.toml` are NOT updated by this menu. To persist new defaults, edit `~/.config/chezmoi/chezmoi.toml` manually (see below). Programmatic persistence ships in slice 2e.
 
 **Reading current values:**
 
