@@ -211,14 +211,41 @@ if (( CAPTURE_MODE == 1 )); then
         _sorted="$(printf "%s\n" "${_entries[@]:-}" | sort -t '|' -k 3,3 -k 2,2)"
 
         while IFS='|' read -r _s _domain _key _type _bval; do
-            _raw="$(read_value "$_domain" "$_key")"
-            if [[ -z "$_raw" ]]; then
-                # Key not set on this machine — fall back to baseline default value
-                _formatted="$(format_value "$_type" "$_bval")"
+            # Check whether key exists before reading value.
+            if command defaults read-type "$_domain" "$_key" >/dev/null 2>&1; then
+                # Key exists — use actual stored type (may differ from baseline).
+                _actual_type="$(command defaults read-type "$_domain" "$_key" 2>/dev/null | awk '{print $NF}')"
+                case "$_actual_type" in
+                    boolean) _use_type="bool" ;;
+                    integer) _use_type="int"  ;;
+                    float)   _use_type="float" ;;
+                    string)  _use_type="string" ;;
+                    *)       _use_type="$_type" ;;  # fallback to baseline type
+                esac
+                if [[ "$_use_type" != "$_type" ]]; then
+                    printf "warn: %s %s actual type %s differs from baseline %s\n" \
+                        "$_domain" "$_key" "$_use_type" "$_type" >&2
+                fi
+                _raw="$(command defaults read "$_domain" "$_key" 2>/dev/null)"
+                # $HOME-relativize string values so they are portable across users.
+                # SC2016: literal '$HOME/' is intentional — expanded at apply time.
+                # shellcheck disable=SC2016
+                if [[ "$_use_type" == "string" && "$_raw" == "$HOME/"* ]]; then
+                    _raw='$HOME/'"${_raw#"$HOME/"}"
+                fi
+                _formatted="$(format_value "$_use_type" "$_raw")"
+                printf "defaults write %s %s -%s %s\n" "$_domain" "$_key" "$_use_type" "$_formatted" >> "$TMP"
             else
-                _formatted="$(format_value "$_type" "$_raw")"
+                # Key not set on this machine — fall back to baseline default value.
+                # $HOME-relativize baseline strings too, since BASELINE uses expanded $HOME.
+                # SC2016: literal '$HOME/' is intentional — expanded at apply time.
+                # shellcheck disable=SC2016
+                if [[ "$_type" == "string" && "$_bval" == "$HOME/"* ]]; then
+                    _bval='$HOME/'"${_bval#"$HOME/"}"
+                fi
+                _formatted="$(format_value "$_type" "$_bval")"
+                printf "defaults write %s %s -%s %s\n" "$_domain" "$_key" "$_type" "$_formatted" >> "$TMP"
             fi
-            printf "defaults write %s %s -%s %s\n" "$_domain" "$_key" "$_type" "$_formatted" >> "$TMP"
             (( count++ )) || true
         done <<< "$_sorted"
 
