@@ -107,8 +107,13 @@ else
 fi
 
 if (( failed > 0 )); then
-    log_warn "Applied $count macOS defaults; $failed write(s) FAILED — see warnings above"
-    exit 1
-else
-    log_ok "Applied $count macOS defaults from $DEFAULTS_FILE"
+    log_warn "═══════════════════════════════════════════════════════════"
+    log_warn "macOS defaults: $count applied, $failed FAILED (see warnings above)"
+    log_warn "Run 'sudo dot doctor --check=macos-defaults' to investigate."
+    log_warn "═══════════════════════════════════════════════════════════"
+    # Exit 0 so chezmoi continues with run_onchange_70 etc.
+    # Per slice 2d retrospective: blocking the apply pipeline on a single failed
+    # defaults write hurts more than it helps (login-autostart hook would be missed).
 fi
+
+log_info "Applied $count macOS defaults"
