@@ -3,7 +3,7 @@
 # Prefers Brewfile.local (produced by scripts/customize-brewfile.sh) over
 # the canonical Brewfile when both exist, so users can run a customized
 # subset without modifying the source-of-truth.
-# version: brewfile-v3 {{ .profile }}
+# version: brewfile-v4 {{ .profile }} features={{ .features | toJson | sha256sum | substr 0 8 }}
 
 set -euo pipefail
 
@@ -15,11 +15,23 @@ BREWFILE_CANONICAL="$REPO_ROOT/Brewfile"
 # Read archetype from chezmoi template data (empty string if key not present).
 ARCHETYPE="{{ index . "brewfile_archetype" | default "" }}"
 
+# Collect feature flags from chezmoi data (if present).
+FEATURE_ARGS=()
+{{- if hasKey . "features" }}
+{{- range $feature, $enabled := .features }}
+{{- if $enabled }}
+FEATURE_ARGS+=( "--enable={{ $feature }}" )
+{{- else }}
+FEATURE_ARGS+=( "--disable={{ $feature }}" )
+{{- end }}
+{{- end }}
+{{- end }}
+
 # Auto-generate Brewfile.local from archetype when missing and archetype is
 # not "custom" (custom requires interactive selection) and not empty.
 if [[ ! -f "$BREWFILE_LOCAL" ]] && [[ -n "$ARCHETYPE" ]] && [[ "$ARCHETYPE" != "custom" ]]; then
     echo "[brewfile-hook] Brewfile.local absent; generating from archetype '$ARCHETYPE'..."
-    if ! bash "$REPO_ROOT/scripts/customize-brewfile.sh" --archetype "$ARCHETYPE" --no-install --non-interactive; then
+    if ! bash "$REPO_ROOT/scripts/customize-brewfile.sh" --archetype "$ARCHETYPE" --non-interactive "${FEATURE_ARGS[@]}" --no-install; then
         rm -f "$BREWFILE_LOCAL"  # defensive: ensure no partial file confuses next-block guard
         echo "[brewfile-hook] WARN: customize-brewfile.sh failed; falling back to canonical Brewfile" >&2
     fi
