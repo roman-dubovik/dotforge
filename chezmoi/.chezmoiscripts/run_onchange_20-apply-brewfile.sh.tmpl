@@ -51,7 +51,13 @@ if (( NEEDS_REGEN == 1 )); then
     if ! bash "$REPO_ROOT/scripts/customize-brewfile.sh" --archetype "$ARCHETYPE" --non-interactive \
             ${FEATURE_ARGS[@]+"${FEATURE_ARGS[@]}"} --no-install --output "$BREWFILE_LOCAL.tmp"; then
         rm -f "$BREWFILE_LOCAL.tmp"
-        echo "[brewfile-hook] WARN: customize-brewfile.sh failed; falling back to canonical Brewfile" >&2
+        if [[ -f "$BREWFILE_LOCAL" ]]; then
+            echo "[brewfile-hook] ERROR: customize-brewfile.sh failed; existing Brewfile.local may be stale (features may differ)." >&2
+            echo "[brewfile-hook] ERROR: Either fix the issue and re-apply, OR remove '$BREWFILE_LOCAL' to force canonical Brewfile usage." >&2
+            exit 1
+        else
+            echo "[brewfile-hook] WARN: customize-brewfile.sh failed; falling back to canonical Brewfile (no Brewfile.local present)" >&2
+        fi
     else
         # Prepend features-hash comment so future runs can detect feature drift.
         if [[ -n "$EXPECTED_FEATURES_HASH" ]]; then
