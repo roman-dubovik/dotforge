@@ -11,7 +11,7 @@
 # Output format:
 #   # ── <Section> ──
 #   defaults write <domain> <key> -<type> <current-value>
-#   # <domain> <key>: (not set)   ← when key is absent
+#   (in --capture mode, keys absent on this machine use the baseline default value)
 #
 # Type mapping from `defaults read-type` output:
 #   Type is boolean  → -bool  (value: 0→false, 1→true)
@@ -213,10 +213,11 @@ if (( CAPTURE_MODE == 1 )); then
         while IFS='|' read -r _s _domain _key _type _bval; do
             _raw="$(read_value "$_domain" "$_key")"
             if [[ -z "$_raw" ]]; then
-                printf "# %s %s: (not set)\n" "$_domain" "$_key" >> "$TMP"
-                continue
+                # Key not set on this machine — fall back to baseline default value
+                _formatted="$(format_value "$_type" "$_bval")"
+            else
+                _formatted="$(format_value "$_type" "$_raw")"
             fi
-            _formatted="$(format_value "$_type" "$_raw")"
             printf "defaults write %s %s -%s %s\n" "$_domain" "$_key" "$_type" "$_formatted" >> "$TMP"
             (( count++ )) || true
         done <<< "$_sorted"
