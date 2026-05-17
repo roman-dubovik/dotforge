@@ -1,0 +1,55 @@
+
+# ── Dock ──
+defaults write com.apple.dock autohide -bool true
+# com.apple.dock autohide-delay: (not set)
+# com.apple.dock autohide-time-modifier: (not set)
+defaults write com.apple.dock mineffect -string "scale"
+defaults write com.apple.dock minimize-to-application -bool true
+defaults write com.apple.dock show-recents -bool false
+defaults write com.apple.dock tilesize -int 60
+
+# ── Finder ──
+# -g AppleShowAllExtensions: (not set)
+# NSGlobalDomain AppleShowAllFiles: (not set)
+# com.apple.finder AppleShowAllFiles: (not set)
+# com.apple.desktopservices DSDontWriteNetworkStores: (not set)
+# com.apple.finder FXDefaultSearchScope: (not set)
+# com.apple.finder FXEnableExtensionChangeWarning: (not set)
+defaults write com.apple.finder FXPreferredViewStyle -string "Nlsv"
+defaults write com.apple.finder ShowPathbar -bool true
+defaults write com.apple.finder ShowStatusBar -bool true
+# com.apple.finder WarnOnEmptyTrash: (not set)
+# com.apple.finder _FXShowPosixPathInTitle: (not set)
+
+# ── Screenshots ──
+# com.apple.screencapture disable-shadow: (not set)
+# com.apple.screencapture include-date: (not set)
+# com.apple.screencapture location: (not set)
+# com.apple.screencapture type: (not set)
+
+# ── Keyboard ──
+# -g ApplePressAndHoldEnabled: (not set)
+# -g InitialKeyRepeat: (not set)
+# -g KeyRepeat: (not set)
+defaults write -g NSAutomaticCapitalizationEnabled -bool true
+# -g NSAutomaticDashSubstitutionEnabled: (not set)
+defaults write -g NSAutomaticPeriodSubstitutionEnabled -bool true
+# -g NSAutomaticQuoteSubstitutionEnabled: (not set)
+# -g NSAutomaticSpellingCorrectionEnabled: (not set)
+
+# ── Trackpad ──
+defaults write com.apple.AppleMultitouchTrackpad Clicking -bool false
+defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool false
+# -g com.apple.mouse.tapBehavior: (not set)
+# -g com.apple.trackpad.scaling: (not set)
+
+# ── UI ──
+# com.apple.LaunchServices LSQuarantine: (not set)
+# -g NSScrollAnimationEnabled: (not set)
+# -g NSWindowResizeTime: (not set)
+# -g NSWindowShouldDragOnGesture: (not set)
+
+# ── Safari ──
+# com.apple.Safari IncludeDevelopMenu: (not set)
+# com.apple.Safari WebKitDeveloperExtrasEnabledPreferenceKey: (not set)
+# com.apple.Safari com.apple.Safari.ContentPageGroupIdentifier.WebKit2DeveloperExtrasEnabled: (not set)

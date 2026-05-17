@@ -6,6 +6,7 @@
 # Usage:
 #   scripts/scan-macos-defaults.sh           # print all keys (current values)
 #   scripts/scan-macos-defaults.sh --diff    # print only keys that diverge from baseline
+#   scripts/scan-macos-defaults.sh --capture # write all current values to chezmoi/dot_config/dotforge/macos-defaults.txt
 #
 # Output format:
 #   # ── <Section> ──
@@ -31,9 +32,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ── Option parsing ──
 DIFF_MODE=0
+CAPTURE_MODE=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --diff)   DIFF_MODE=1; shift ;;
+        --diff)    DIFF_MODE=1; shift ;;
+        --capture) CAPTURE_MODE=1; shift ;;
         --help|-h)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
             exit 0
@@ -41,6 +44,11 @@ while [[ $# -gt 0 ]]; do
         *)  printf "Unknown argument: %s\n" "$1" >&2; exit 2 ;;
     esac
 done
+
+if (( CAPTURE_MODE == 1 && DIFF_MODE == 1 )); then
+    printf "Error: --capture and --diff are mutually exclusive.\n" >&2
+    exit 2
+fi
 
 # ── Baseline table ──
 # Format: <section>|<domain>|<key>|<type>|<baseline-value>
@@ -160,6 +168,66 @@ values_equal() {
     esac
     [[ "$normalized_current" == "$baseline" ]]
 }
+
+# ── Capture mode ──
+
+if (( CAPTURE_MODE == 1 )); then
+    OUTPUT="$REPO_ROOT/chezmoi/dot_config/dotforge/macos-defaults.txt"
+    mkdir -p "$(dirname "$OUTPUT")"
+    if [[ -f "$OUTPUT" ]]; then cp "$OUTPUT" "${OUTPUT}.bak"; fi
+
+    TMP="$(mktemp -t macos-defaults.XXXXXX)"
+    trap 'rm -f "$TMP"' EXIT
+
+    # Discover section order from BASELINE (preserving declaration order)
+    # Use a newline-delimited string to track seen sections (bash 3.2 compatible)
+    declare -a SECTION_ORDER=()
+    _seen_sections=""
+    for _entry in "${BASELINE[@]:-}"; do
+        case "$_entry" in \#*) continue ;; esac
+        _section="${_entry%%|*}"
+        if [[ "$_seen_sections" != *$'\n'"$_section"$'\n'* ]]; then
+            _seen_sections+=$'\n'"$_section"$'\n'
+            SECTION_ORDER+=("$_section")
+        fi
+    done
+
+    count=0
+    for _sec in "${SECTION_ORDER[@]:-}"; do
+        printf "\n# ── %s ──\n" "$_sec" >> "$TMP"
+
+        # Collect entries for this section into a sortable list
+        declare -a _entries=()
+        for _entry in "${BASELINE[@]:-}"; do
+            case "$_entry" in \#*) continue ;; esac
+            _esec="${_entry%%|*}"
+            if [[ "$_esec" == "$_sec" ]]; then
+                _entries+=("$_entry")
+            fi
+        done
+
+        # Sort by key (field 3), then by domain (field 2) for tie-breaking
+        # Write sorted entries to a temp file for processing
+        _sorted="$(printf "%s\n" "${_entries[@]:-}" | sort -t '|' -k 3,3 -k 2,2)"
+
+        while IFS='|' read -r _s _domain _key _type _bval; do
+            _raw="$(read_value "$_domain" "$_key")"
+            if [[ -z "$_raw" ]]; then
+                printf "# %s %s: (not set)\n" "$_domain" "$_key" >> "$TMP"
+                continue
+            fi
+            _formatted="$(format_value "$_type" "$_raw")"
+            printf "defaults write %s %s -%s %s\n" "$_domain" "$_key" "$_type" "$_formatted" >> "$TMP"
+            (( count++ )) || true
+        done <<< "$_sorted"
+
+        unset _entries
+    done
+
+    mv "$TMP" "$OUTPUT"
+    printf "✓ Captured %d macOS defaults to %s\n" "$count" "$OUTPUT"
+    exit 0
+fi
 
 # ── Main scan ──
 
