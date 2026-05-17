@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Apply sensible macOS defaults for Dock, Finder, Screenshots, Keyboard,
-# Trackpad, UI, and Safari.
+# Apply macOS defaults read from $REPO_ROOT/chezmoi/dot_config/dotforge/macos-defaults.txt.
 #
 # Idempotent: `defaults write` overwrites the key with the same value on
 # re-runs — no observable side effect.
 #
 # DRY_RUN support: set DRY_RUN=1 to print "would: <command>" for every
 # defaults write without executing, and skip the killall at the end.
+#
+# NOTE: chezmoi re-runs this script when its content (sha) changes. After
+# editing chezmoi/dot_config/dotforge/macos-defaults.txt, also touch this
+# script (or update the comment version) to trigger re-application.
+#   comment-version: 1
 #
 # Usage (chezmoi runs this automatically on change):
 #   chezmoi apply
@@ -23,7 +27,7 @@ REPO_ROOT="${SOURCE_PATH%/chezmoi}"
 . "$REPO_ROOT/lib/log.sh"
 
 # ── DRY_RUN shim ──
-# Shadow the `defaults` binary so the write block can stay verbatim.
+# Shadow the `defaults` binary so the loop can stay verbatim.
 defaults() {
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
         echo "would: defaults $*"
@@ -38,66 +42,49 @@ defaults() {
 
 log_info "Applying macOS defaults..."
 
-# ── Dock ──
-defaults write com.apple.dock autohide -bool true
-defaults write com.apple.dock autohide-delay -float 0
-defaults write com.apple.dock autohide-time-modifier -float 0.2
-defaults write com.apple.dock tilesize -int 48
-defaults write com.apple.dock show-recents -bool false
-defaults write com.apple.dock mineffect -string "scale"
-defaults write com.apple.dock minimize-to-application -bool true
-
-# ── Finder ──
-defaults write -g AppleShowAllExtensions -bool true
-defaults write com.apple.finder AppleShowAllFiles -bool true
-defaults write com.apple.finder ShowPathbar -bool true
-defaults write com.apple.finder ShowStatusBar -bool true
-defaults write com.apple.finder FXPreferredViewStyle -string "Nlsv"   # list view
-defaults write com.apple.finder _FXShowPosixPathInTitle -bool true
-defaults write com.apple.finder FXDefaultSearchScope -string "SCcf"   # search current folder
-defaults write com.apple.finder FXEnableExtensionChangeWarning -bool false
-defaults write com.apple.finder WarnOnEmptyTrash -bool false
-defaults write NSGlobalDomain AppleShowAllFiles -bool true
-defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true   # no .DS_Store on network shares
-
-# ── Screenshots ──
+# ── Screenshots directory (not in macos-defaults.txt) ──
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "would: mkdir -p $HOME/Pictures/Screenshots"
 else
     mkdir -p "$HOME/Pictures/Screenshots"
 fi
-defaults write com.apple.screencapture location -string "$HOME/Pictures/Screenshots"
-defaults write com.apple.screencapture disable-shadow -bool true
-defaults write com.apple.screencapture type -string "png"
-defaults write com.apple.screencapture include-date -bool true
 
-# ── Keyboard ──
-defaults write -g KeyRepeat -int 2
-defaults write -g InitialKeyRepeat -int 15
-defaults write -g ApplePressAndHoldEnabled -bool false   # repeat instead of accent menu
-defaults write -g NSAutomaticSpellingCorrectionEnabled -bool false
-defaults write -g NSAutomaticCapitalizationEnabled -bool false
-defaults write -g NSAutomaticPeriodSubstitutionEnabled -bool false
-defaults write -g NSAutomaticDashSubstitutionEnabled -bool false
-defaults write -g NSAutomaticQuoteSubstitutionEnabled -bool false
+# ── Read defaults from file ──
+DEFAULTS_FILE="$REPO_ROOT/chezmoi/dot_config/dotforge/macos-defaults.txt"
 
-# ── Trackpad ──
-# tap-to-click disabled — prefer the physical click everywhere
-defaults write com.apple.AppleMultitouchTrackpad Clicking -bool false
-defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool false
-defaults write -g com.apple.mouse.tapBehavior -int 0
-defaults write -g com.apple.trackpad.scaling -float 1.5
+if [[ ! -f "$DEFAULTS_FILE" ]]; then
+    log_warn "macOS defaults file not found at $DEFAULTS_FILE — skipping (run 'dot snapshot' to create one)"
+    exit 0
+fi
 
-# ── UI ──
-defaults write -g NSWindowResizeTime -float 0.001
-defaults write -g NSScrollAnimationEnabled -bool false
-defaults write -g NSWindowShouldDragOnGesture -bool true
-defaults write com.apple.LaunchServices LSQuarantine -bool false   # no "are you sure you want to open?"
+count=0
+while IFS= read -r line; do
+    # Skip comments and blank lines
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line//[[:space:]]/}" ]] && continue
 
-# ── Safari (dev-friendly) ──
-defaults write com.apple.Safari IncludeDevelopMenu -bool true
-defaults write com.apple.Safari WebKitDeveloperExtrasEnabledPreferenceKey -bool true
-defaults write com.apple.Safari com.apple.Safari.ContentPageGroupIdentifier.WebKit2DeveloperExtrasEnabled -bool true
+    # Parse via read -ra (NOT eval — file is trusted but values could contain
+    # shell metachars; eval would execute arbitrary code).
+    read -ra tokens <<<"$line"
+
+    # Sanity check: first token MUST be literal "defaults"
+    if [[ "${tokens[0]:-}" != "defaults" ]]; then
+        log_warn "skipping non-defaults line: $line"
+        continue
+    fi
+
+    # Strip surrounding ASCII double-quotes from each token (read -ra keeps
+    # them literal; defaults binary does not want them).
+    for i in "${!tokens[@]}"; do
+        t="${tokens[$i]}"
+        [[ "$t" == \"*\" ]] && tokens[i]="${t:1:${#t}-2}"
+    done
+
+    # Call defaults binary directly with the remaining args — no shell
+    # interpretation of values.
+    defaults "${tokens[@]:1}"
+    count=$((count + 1))
+done < "$DEFAULTS_FILE"
 
 # ── Restart affected services ──
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
@@ -106,4 +93,4 @@ else
     killall Dock Finder SystemUIServer 2>/dev/null || true
 fi
 
-log_ok "macOS defaults applied (35 keys across Dock, Finder, Screenshots, Keyboard, Trackpad, UI, Safari)"
+log_ok "Applied $count macOS defaults from $DEFAULTS_FILE"
