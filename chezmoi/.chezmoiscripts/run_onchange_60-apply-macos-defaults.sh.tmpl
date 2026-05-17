@@ -55,6 +55,7 @@ fi
 
 count=0
 failed=0
+skipped=0
 while IFS= read -r line; do
     # Skip comments and blank lines
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
@@ -96,6 +97,7 @@ while IFS= read -r line; do
     for t in "${tokens[@]:1}"; do
         if [[ "$t" == \"* || "$t" == *\" ]]; then
             log_warn "skipping line with unbalanced quote (token: $t): $line"
+            skipped=$((skipped + 1))
             continue 2
         fi
     done
@@ -117,9 +119,9 @@ else
     killall Dock Finder SystemUIServer 2>/dev/null || true
 fi
 
-if (( failed > 0 )); then
+if (( failed > 0 || skipped > 0 )); then
     log_warn "═══════════════════════════════════════════════════════════"
-    log_warn "macOS defaults: $count applied, $failed FAILED (see warnings above)"
+    log_warn "macOS defaults: $count applied, $failed FAILED, $skipped skipped (unbalanced quotes)"
     log_warn "Run 'sudo dot doctor --check=macos-defaults' to investigate."
     log_warn "═══════════════════════════════════════════════════════════"
     # Exit 0 so chezmoi continues with run_onchange_70 etc.
@@ -127,4 +129,8 @@ if (( failed > 0 )); then
     # defaults write hurts more than it helps (login-autostart hook would be missed).
 fi
 
-log_info "Applied $count macOS defaults"
+if (( skipped > 0 )); then
+    log_info "Applied $count macOS defaults ($skipped lines skipped — see warnings above)"
+else
+    log_info "Applied $count macOS defaults"
+fi

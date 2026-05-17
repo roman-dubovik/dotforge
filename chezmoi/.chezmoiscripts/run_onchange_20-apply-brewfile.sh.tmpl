@@ -53,7 +53,7 @@ if (( NEEDS_REGEN == 1 )); then
         rm -f "$BREWFILE_LOCAL.tmp"
         if [[ -f "$BREWFILE_LOCAL" ]]; then
             echo "[brewfile-hook] ERROR: customize-brewfile.sh failed; existing Brewfile.local may be stale (features may differ)." >&2
-            echo "[brewfile-hook] ERROR: Either fix the issue and re-apply, OR remove '$BREWFILE_LOCAL' to force canonical Brewfile usage." >&2
+            echo "[brewfile-hook] ERROR: Either fix the issue and re-apply, OR remove \"$BREWFILE_LOCAL\" to force canonical Brewfile usage." >&2
             exit 1
         else
             echo "[brewfile-hook] WARN: customize-brewfile.sh failed; falling back to canonical Brewfile (no Brewfile.local present)" >&2
