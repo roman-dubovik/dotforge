@@ -412,6 +412,11 @@ apply_feature_filter() {
             for i in "${!FEATURE_NAMES[@]}"; do
                 if [[ "${FEATURE_NAMES[$i]}" == "$feature" ]]; then
                     pattern="${FEATURE_PATTERNS[$i]}"
+                    matches=$(grep -cE "$pattern" "$BREWFILE" || true)
+                    if (( matches == 0 )); then
+                        printf "warn: --enable=%s matched no lines in %s — pattern may be stale\n" \
+                            "$feature" "$BREWFILE" >&2
+                    fi
                     while IFS= read -r line; do
                         if ! grep -qFx "$line" "$target_file"; then
                             printf "%s\n" "$line" >> "$target_file"
