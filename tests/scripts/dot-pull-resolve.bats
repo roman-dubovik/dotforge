@@ -409,9 +409,10 @@ MOCK
 
     COMBINED="$(bash "$SCRIPT" --resolve=ours 2>&1)" || RC=$?
     rm -f "$BATS_TEST_TMPDIR/mocks/git"
-    # Script should have exited 1 and printed a stash/error message
+    # Script should have exited 1 and printed an explicit failure message —
+    # do NOT match the routine "Stashing local changes…" line that prints before any failure.
     [ "${RC:-0}" -ne 0 ]
-    [[ "$COMBINED" == *"stash"* ]] || [[ "$COMBINED" == *"Conflict resolution failed"* ]] || [[ "$COMBINED" == *"Failed to resolve"* ]]
+    [[ "$COMBINED" == *"Conflict resolution failed"* ]] || [[ "$COMBINED" == *"Failed to resolve"* ]]
 }
 
 # ── FIX 9 (c): git_commit_no_edit failure ──

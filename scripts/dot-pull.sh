@@ -242,7 +242,10 @@ _restore_stash() {
         # If a merge is in progress, stash pop refuses to run.  Abort it first.
         if [[ -e "$CHEZMOI_REPO/.git/MERGE_HEAD" ]]; then
             log_warn "Active merge detected — aborting merge before stash pop…"
-            chezmoi git -- merge --abort >/dev/null 2>&1 || true
+            local _abort_err
+            if ! _abort_err="$(chezmoi git -- merge --abort 2>&1)"; then
+                log_warn "merge --abort failed: ${_abort_err} — stash pop will likely also fail"
+            fi
         fi
         if git -C "$CHEZMOI_REPO" stash pop "$STASH_REF" >/dev/null 2>&1; then
             log_warn "stash restored"
@@ -313,8 +316,17 @@ if [[ "$STASH_SAVED" -eq 1 ]]; then
             interactive) local_pop_mode="theirs" ;;   # fallback; overridden below when tty
         esac
 
-        log_warn "Stash pop had conflicts — auto-resolving pop conflicts (pop side: ${local_pop_mode})…"
         _stash_conflicts="$(git_conflicted_files "$CHEZMOI_REPO")"
+        if [[ -z "$_stash_conflicts" ]]; then
+            # git stash pop failed but no conflicted files → non-conflict failure
+            # (index lock, untracked file collision, corrupt object, etc.). Surface
+            # the actual git diagnostic instead of falsely claiming "resolved".
+            log_error "stash pop failed without conflict markers — likely index lock, untracked-file collision, or repo corruption"
+            log_error "stash NOT restored — listed in 'git stash list', resolve manually: run 'git -C \"$CHEZMOI_REPO\" stash pop $STASH_REF' and inspect"
+            exit 1
+        fi
+
+        log_warn "Stash pop had conflicts — auto-resolving pop conflicts (pop side: ${local_pop_mode})…"
         _resolved_files=""
 
         while IFS= read -r _f; do

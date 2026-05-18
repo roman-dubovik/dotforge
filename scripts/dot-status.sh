@@ -91,6 +91,8 @@ DOCTOR_SCRIPT="${DOTFORGE_DOCTOR_SCRIPT:-$REPO_ROOT/scripts/doctor.sh}"
 _DEFAULT_SCANNER_FILES="${REPO_ROOT}/cli-globals.txt:${REPO_ROOT}/login-items.txt:${REPO_ROOT}/chezmoi/dot_config/dotforge/macos-defaults.txt"
 SCANNER_FILES="${DOTFORGE_SCANNER_FILES:-$_DEFAULT_SCANNER_FILES}"
 
+DIVERGED=0
+
 # ── Optional fetch ──
 
 if [[ "$DO_FETCH" -eq 1 ]]; then
@@ -105,8 +107,6 @@ fi
 # ── Gather divergence data ──
 
 log_section "dot status"
-
-DIVERGED=0
 
 # (a) ahead / behind
 ahead="$(git_ahead_count  "$CHEZMOI_REPO" "$REMOTE_REF")"
@@ -177,11 +177,11 @@ _warn="$(awk '/^\[WARN\]/' "$_doctor_out" 2>/dev/null | awk 'END{print NR}')"
 _fail="$(awk '/^\[FAIL\]/' "$_doctor_out" 2>/dev/null | awk 'END{print NR}')"
 rm -f "$_doctor_out"
 
-# Doctor exited non-zero but emitted no parseable output → crash / unexpected exit.
+# Doctor exited non-zero but emitted no FAIL/WARN → crash mid-run (possibly after partial [OK] output).
 # Check this BEFORE the normal warn/fail branches so the normal paths still apply
 # when doctor exits non-zero and does emit [WARN]/[FAIL] lines.
-if [[ "$_doctor_rc" -ne 0 ]] && [[ "$_pass" -eq 0 ]] && [[ "$_warn" -eq 0 ]] && [[ "$_fail" -eq 0 ]]; then
-    printf "ERROR (doctor exited %s with no parseable output)\n" "$_doctor_rc"
+if [[ "$_doctor_rc" -ne 0 ]] && [[ "$_warn" -eq 0 ]] && [[ "$_fail" -eq 0 ]]; then
+    printf "ERROR (doctor exited %s with %s pass, no warn/fail output — likely crash)\n" "$_doctor_rc" "$_pass"
     DIVERGED=1
 elif [[ "$_fail" -gt 0 ]]; then
     printf "FAIL (%s pass, %s warn, %s fail)\n" "$_pass" "$_warn" "$_fail"
