@@ -229,11 +229,15 @@ fi
 _restore_stash() {
     if [[ "$STASH_SAVED" -eq 1 ]]; then
         log_warn "Restoring stash ${STASH_REF}…"
+        # If a merge is in progress, stash pop refuses to run.  Abort it first.
+        if [[ -e "$CHEZMOI_REPO/.git/MERGE_HEAD" ]]; then
+            log_warn "Active merge detected — aborting merge before stash pop…"
+            chezmoi git -- merge --abort >/dev/null 2>&1 || true
+        fi
         if git -C "$CHEZMOI_REPO" stash pop "$STASH_REF" >/dev/null 2>&1; then
-            log_warn "stash restored, resolve manually"
+            log_warn "stash restored"
         else
-            log_error "stash pop failed — stash still in list: run 'git stash list' in chezmoi source"
-            log_warn "stash restored, resolve manually"
+            log_error "stash pop failed — stash NOT restored — listed in 'git stash list', resolve manually: run 'git stash list' in chezmoi source"
         fi
     fi
 }

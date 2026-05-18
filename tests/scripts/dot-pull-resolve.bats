@@ -316,5 +316,5 @@ MOCK
 
     # Capture both stdout and stderr
     COMBINED_OUTPUT="$(bash "$SCRIPT" --resolve=ours 2>&1)" || true
-    [[ "$COMBINED_OUTPUT" == *"stash restored, resolve manually"* ]]
+    [[ "$COMBINED_OUTPUT" == *"stash restored"* ]]
 }
