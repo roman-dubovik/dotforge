@@ -266,10 +266,17 @@ TOML
 
 # ── chezmoi_toml_sync ──
 
-@test "chezmoi_toml_sync: no-op when chezmoi.toml absent" {
+@test "chezmoi_toml_sync: returns 1 with warning when chezmoi.toml absent" {
     state_init
     run chezmoi_toml_sync
-    [ "$status" -eq 0 ]
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"chezmoi.toml not found"* ]]
+}
+
+@test "chezmoi_toml_sync: warns with path when chezmoi.toml absent" {
+    state_init
+    run chezmoi_toml_sync
+    [[ "$output" == *"$DOTFORGE_CHEZMOI_TOML"* ]]
 }
 
 @test "chezmoi_toml_sync: rewrites [data.features] section" {

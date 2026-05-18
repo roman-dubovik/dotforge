@@ -220,11 +220,15 @@ state_list_features() {
 # Updates known feature keys in [data.features] of ~/.config/chezmoi/chezmoi.toml
 # using current values from state.toml.  Unknown keys inside [data.features] and
 # all other sections are left untouched.
+# Returns 1 with a warning if chezmoi.toml is absent.
 # Creates a backup at <file>.bak; if .bak already exists, uses <file>.bak.<timestamp>.
 chezmoi_toml_sync() {
     local chezmoi_file
     chezmoi_file="$(chezmoi_toml_file)"
-    [[ -f "$chezmoi_file" ]] || return 0   # nothing to sync if chezmoi.toml absent
+    if [[ ! -f "$chezmoi_file" ]]; then
+        printf "WARN: chezmoi.toml not found at %s; skipping sync\n" "$chezmoi_file" >&2
+        return 1
+    fi
 
     # Read current feature values from state.toml (fall back to defaults).
     # Build a pipe-delimited lookup string: "feat1=val1|feat2=val2|..."
