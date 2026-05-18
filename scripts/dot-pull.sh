@@ -19,6 +19,7 @@ source "$REPO_ROOT/lib/log.sh" 2>/dev/null || {
     # fallback no-op loggers if lib/log.sh missing (shouldn't happen in normal flow)
     log_info()    { printf "%s\n" "$*"; }
     log_ok()      { printf "✓ %s\n" "$*"; }
+    log_warn()    { printf "WARN: %s\n" "$*" >&2; }
     log_error()   { printf "ERROR: %s\n" "$*" >&2; }
     log_section() { printf "\n── %s ──\n" "$*"; }
 }
