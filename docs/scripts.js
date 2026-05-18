@@ -1,48 +1,63 @@
 /* dotforge landing — scripts.js */
 
 /* ── Copy-to-clipboard ─────────────────────────────────────────────── */
+function copyTextToClipboard(btn, text) {
+    var icon = btn.querySelector('.copy-icon');
+    var label = btn.querySelector('.copy-label');
+    var original = label ? label.textContent : '';
+
+    function showCopied() {
+        btn.classList.add('copied');
+        if (icon) icon.textContent = '✓';
+        if (label) label.textContent = 'Copied';
+        setTimeout(function() {
+            btn.classList.remove('copied');
+            if (icon) icon.textContent = '⧉';
+            if (label) label.textContent = original;
+        }, 2000);
+    }
+
+    function showFailed(err) {
+        if (err) console.error('dotforge: clipboard copy failed', err);
+        if (label) {
+            label.textContent = 'Copy failed';
+            setTimeout(function() { if (label) label.textContent = original; }, 2000);
+        }
+    }
+
+    function fallback() {
+        try {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'absolute';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            var ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            if (ok) showCopied(); else showFailed(null);
+        } catch (e) {
+            showFailed(e);
+        }
+    }
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text).then(showCopied).catch(function(e) {
+            console.warn('dotforge: clipboard API failed, falling back', e);
+            fallback();
+        });
+    } else {
+        fallback();
+    }
+}
+
 document.querySelectorAll('.copy-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
     var row = btn.closest('.code-row');
     var codeEl = row ? row.querySelector('code') : null;
     if (!codeEl) return;
-
-    var text = codeEl.textContent.trim();
-    var icon = btn.querySelector('.copy-icon');
-    var label = btn.querySelector('.copy-label');
-
-    navigator.clipboard.writeText(text).then(function() {
-      btn.classList.add('copied');
-      if (icon)  icon.textContent = '✓';
-      if (label) label.textContent = 'Copied';
-
-      setTimeout(function() {
-        btn.classList.remove('copied');
-        if (icon)  icon.textContent = '⎘';
-        if (label) label.textContent = 'Copy';
-      }, 2000);
-    }).catch(function() {
-      /* Fallback for older Safari / non-https */
-      try {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-
-        btn.classList.add('copied');
-        if (icon)  icon.textContent = '✓';
-        if (label) label.textContent = 'Copied';
-        setTimeout(function() {
-          btn.classList.remove('copied');
-          if (icon)  icon.textContent = '⎘';
-          if (label) label.textContent = 'Copy';
-        }, 2000);
-      } catch (e) { /* silent */ }
-    });
+    copyTextToClipboard(btn, codeEl.textContent.trim());
   });
 });
 
