@@ -235,6 +235,17 @@ TOML
     [ ! -f "$DOTFORGE_STATE_FILE" ]
 }
 
+@test "dot-apply --dry-run --enable=docker_desktop: state.toml NOT created, exit 0" {
+    run bash "$SCRIPT" --dry-run --enable=docker_desktop
+    [ "$status" -eq 0 ]
+    [ ! -f "$DOTFORGE_STATE_FILE" ]
+}
+
+@test "dot-apply --dry-run --enable=docker_desktop: prints 'would enable' message" {
+    run bash "$SCRIPT" --dry-run --enable=docker_desktop
+    [[ "$output" == *"would enable: docker_desktop"* ]]
+}
+
 # ── Real script: unknown argument still exits 2 ──
 
 @test "dot-apply unknown arg: real script exits 2" {

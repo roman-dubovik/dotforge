@@ -87,6 +87,8 @@ Usage:
                                Exit code matches post-apply doctor (0 = clean).
   dot apply --dry-run          Show pending chezmoi diff without mutating anything.
                                Equivalent to: chezmoi diff
+                               Note: with --enable/--disable, dry-run reports planned
+                               changes without writing state.toml or chezmoi.toml.
   dot apply --enable=FEATURE   Enable one or more feature flags (comma-separated or
                                repeated), persist to state.toml, then apply.
   dot apply --disable=FEATURE  Disable one or more feature flags, persist, then apply.
@@ -118,22 +120,36 @@ for _f in "${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"}" "${DISABLE_FLAGS[@]+"${DISAB
     fi
 done
 
-# Apply mutations if any were requested.
+# Apply mutations only when NOT in dry-run mode.
 if [[ "${#ENABLE_FLAGS[@]}" -gt 0 || "${#DISABLE_FLAGS[@]}" -gt 0 ]]; then
-    log_section "Feature flags"
-    state_init   # ensure state.toml exists with defaults
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        # Dry-run: report planned changes without writing any files.
+        log_section "Feature flags (dry-run)"
+        for _f in "${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"}"; do
+            log_info "dry-run: would enable: ${_f}"
+        done
+        for _f in "${DISABLE_FLAGS[@]+"${DISABLE_FLAGS[@]}"}"; do
+            log_info "dry-run: would disable: ${_f}"
+        done
+    else
+        log_section "Feature flags"
+        state_init   # ensure state.toml exists with defaults
 
-    for _f in "${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"}"; do
-        state_set "features.${_f}" true
-        log_ok "enabled: ${_f}"
-    done
-    for _f in "${DISABLE_FLAGS[@]+"${DISABLE_FLAGS[@]}"}"; do
-        state_set "features.${_f}" false
-        log_ok "disabled: ${_f}"
-    done
+        for _f in "${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"}"; do
+            state_set "features.${_f}" true
+            log_ok "enabled: ${_f}"
+        done
+        for _f in "${DISABLE_FLAGS[@]+"${DISABLE_FLAGS[@]}"}"; do
+            state_set "features.${_f}" false
+            log_ok "disabled: ${_f}"
+        done
 
-    chezmoi_toml_sync
-    log_info "state.toml and chezmoi.toml synced."
+        if chezmoi_toml_sync; then
+            log_info "state.toml and chezmoi.toml synced."
+        else
+            log_info "state.toml updated; chezmoi.toml skipped (not found)."
+        fi
+    fi
 fi
 
 # ── Dry-run branch (exec replaces process; trap not needed — tmp files not yet created) ──
