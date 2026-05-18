@@ -179,18 +179,27 @@ _resolve_conflicts() {
                         choice="theirs"
                     fi
                 else
-                    printf "Conflict in '%s' — keep local? [y/n]: " "$f"
-                    # Read from fd 3 (redirected from stdin before the while loop)
-                    # or fall back to /dev/tty if available.
+                    # Try to read from fd 3 (original stdin) or /dev/tty.
+                    # If neither is available, error out — silent defaulting is unsafe.
                     _ans=""
+                    _got_input=0
                     if read -r _ans <&3 2>/dev/null; then
-                        :
+                        _got_input=1
                     elif [[ -c /dev/tty ]]; then
-                        read -r _ans </dev/tty
+                        printf "Conflict in '%s' — keep local? [y/n]: " "$f"
+                        read -r _ans </dev/tty && _got_input=1
+                    fi
+                    if [[ "$_got_input" -eq 0 ]]; then
+                        log_error "interactive mode requires stdin or /dev/tty; use --resolve=ours or --resolve=theirs for non-interactive sessions"
+                        return 1
                     fi
                     case "$_ans" in
                         y|Y|yes|YES) choice="ours"   ;;
-                        *)           choice="theirs" ;;
+                        n|N|no|NO)   choice="theirs" ;;
+                        *)
+                            log_warn "Unrecognised answer '${_ans}' for '$f' — defaulting to 'theirs' (take remote)"
+                            choice="theirs"
+                            ;;
                     esac
                 fi
                 log_info "Resolving $f (${choice})…"
