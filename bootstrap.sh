@@ -316,20 +316,29 @@ cmd_customize() {
 
     bash "$repo_root/scripts/customize-brewfile.sh" ${feature_args[@]+"${feature_args[@]}"}
 
-    # Persist feature selections to state.toml so future invocations pick them up.
+    # Persist feature selections to state.toml and sync to chezmoi.toml.
     if [[ "$state_loaded" -eq 1 && "${#feature_args[@]}" -gt 0 ]]; then
-        local a
-        for a in "${feature_args[@]}"; do
-            case "$a" in
-                --enable=*)  state_set "features.${a#--enable=}"  true  ;;
-                --disable=*) state_set "features.${a#--disable=}" false ;;
-            esac
-        done
-        say "Feature selections saved to state.toml."
+        _persist_feature_args "${feature_args[@]}"
+        say "Feature selections saved to state.toml and synced to chezmoi.toml."
     fi
 
     say "If you want to apply the new Brewfile.local now, run:"
     echo "  chezmoi apply --include=scripts -v"
+}
+
+# ── _persist_feature_args ──
+# Usage: _persist_feature_args [--enable=FEATURE...] [--disable=FEATURE...]
+# Writes each flag to state.toml via state_set, then calls chezmoi_toml_sync.
+# Requires state.sh already sourced (state_set and chezmoi_toml_sync available).
+_persist_feature_args() {
+    local a
+    for a in "$@"; do
+        case "$a" in
+            --enable=*)  state_set "features.${a#--enable=}"  true  ;;
+            --disable=*) state_set "features.${a#--disable=}" false ;;
+        esac
+    done
+    chezmoi_toml_sync
 }
 
 # ── Subcommand: add-key ──

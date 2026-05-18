@@ -341,6 +341,31 @@ TOML
     [[ "$output" == *"true"* ]]
 }
 
+@test "chezmoi_toml_sync: appends [data.features] section when absent" {
+    state_init
+
+    mkdir -p "$(dirname "$DOTFORGE_CHEZMOI_TOML")"
+    cat > "$DOTFORGE_CHEZMOI_TOML" <<'TOML'
+[data]
+    machine_name = "test-box"
+    profile = "personal"
+TOML
+
+    chezmoi_toml_sync
+
+    # Section header must be present
+    grep -q "\[data.features\]" "$DOTFORGE_CHEZMOI_TOML"
+
+    # All known features must appear
+    for feat in docker_desktop ai_assistants vpn_suite office_suite media_tools design_tools; do
+        grep -q "$feat" "$DOTFORGE_CHEZMOI_TOML"
+    done
+
+    # Other sections must be preserved
+    grep -q "machine_name" "$DOTFORGE_CHEZMOI_TOML"
+    grep -q "profile" "$DOTFORGE_CHEZMOI_TOML"
+}
+
 @test "chezmoi_toml_sync: uses timestamped .bak when .bak already exists" {
     state_init
     mkdir -p "$(dirname "$DOTFORGE_CHEZMOI_TOML")"
@@ -357,4 +382,45 @@ TOML
     local ts_bak
     ts_bak="$(ls "${DOTFORGE_CHEZMOI_TOML}.bak."* 2>/dev/null | head -1)"
     [ -n "$ts_bak" ]
+}
+
+# ── _persist_feature_args (bootstrap.sh helper; tests via state.sh sourced in setup) ──
+
+# Define the helper here for unit-testing; in bootstrap.sh it is defined inline.
+# shellcheck disable=SC2317
+_persist_feature_args_testable() {
+    local a
+    for a in "$@"; do
+        case "$a" in
+            --enable=*)  state_set "features.${a#--enable=}"  true  ;;
+            --disable=*) state_set "features.${a#--disable=}" false ;;
+        esac
+    done
+    chezmoi_toml_sync
+}
+
+@test "_persist_feature_args: writes state.toml and syncs chezmoi.toml" {
+    mkdir -p "$(dirname "$DOTFORGE_CHEZMOI_TOML")"
+    cat > "$DOTFORGE_CHEZMOI_TOML" <<'TOML'
+[data]
+    machine_name = "test-box"
+
+[data.features]
+    docker_desktop = true
+    office_suite = false
+TOML
+
+    _persist_feature_args_testable --enable=office_suite --disable=docker_desktop
+
+    # state.toml updated
+    run state_get features.office_suite
+    [ "$output" = "true" ]
+    run state_get features.docker_desktop
+    [ "$output" = "false" ]
+
+    # chezmoi.toml synced
+    run grep "office_suite" "$DOTFORGE_CHEZMOI_TOML"
+    [[ "$output" == *"true"* ]]
+    run grep "docker_desktop" "$DOTFORGE_CHEZMOI_TOML"
+    [[ "$output" == *"false"* ]]
 }
