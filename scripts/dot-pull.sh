@@ -322,6 +322,7 @@ if [[ "$STASH_SAVED" -eq 1 ]]; then
             # (index lock, untracked file collision, corrupt object, etc.). Surface
             # the actual git diagnostic instead of falsely claiming "resolved".
             log_error "stash pop failed without conflict markers — likely index lock, untracked-file collision, or repo corruption"
+            log_error "NOTE: chezmoi apply has already run — your \$HOME reflects the pulled state"
             log_error "stash NOT restored — listed in 'git stash list', resolve manually: run 'git -C \"$CHEZMOI_REPO\" stash pop $STASH_REF' and inspect"
             exit 1
         fi
