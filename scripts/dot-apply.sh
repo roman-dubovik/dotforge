@@ -120,6 +120,16 @@ for _f in "${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"}" "${DISABLE_FLAGS[@]+"${DISAB
     fi
 done
 
+# Detect same-feature enable+disable conflict.
+for _f in "${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"}"; do
+    for _d in "${DISABLE_FLAGS[@]+"${DISABLE_FLAGS[@]}"}"; do
+        if [[ "$_f" == "$_d" ]]; then
+            log_error "conflicting --enable and --disable for feature: $_f"
+            exit 2
+        fi
+    done
+done
+
 # Apply mutations only when NOT in dry-run mode.
 if [[ "${#ENABLE_FLAGS[@]}" -gt 0 || "${#DISABLE_FLAGS[@]}" -gt 0 ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then

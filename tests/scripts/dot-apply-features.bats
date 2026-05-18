@@ -5,107 +5,30 @@
 SCRIPT="$BATS_TEST_DIRNAME/../../scripts/dot-apply.sh"
 
 setup() {
-    # Redirect HOME so no real ~/.config is touched
+    # Redirect HOME so no real ~/.config is touched.
+    # DOTFORGE_STATE_FILE and DOTFORGE_CHEZMOI_TOML are overridden so the real
+    # script writes to tmp paths instead of ~/.config.
     export HOME="$BATS_TEST_TMPDIR"
     export DOTFORGE_STATE_FILE="$BATS_TEST_TMPDIR/.config/dotforge/state.toml"
     export DOTFORGE_CHEZMOI_TOML="$BATS_TEST_TMPDIR/.config/chezmoi/chezmoi.toml"
 
-    # Mock chezmoi and bash (for doctor.sh subprocess) to succeed silently
+    # Mock chezmoi on PATH so apply/diff don't mutate real dotfiles.
     mkdir -p "$BATS_TEST_TMPDIR/mocks"
-
-    # Mock chezmoi: succeed for apply and diff
     cat > "$BATS_TEST_TMPDIR/mocks/chezmoi" <<'MOCK'
 #!/usr/bin/env bash
 exit 0
 MOCK
     chmod +x "$BATS_TEST_TMPDIR/mocks/chezmoi"
 
-    # Mock doctor.sh by overriding REPO_ROOT's scripts/doctor.sh via a symlink trick:
-    # create a fake doctor.sh in the mocks dir and export REPO_ROOT pointing there.
-    mkdir -p "$BATS_TEST_TMPDIR/mock-repo/scripts"
-    mkdir -p "$BATS_TEST_TMPDIR/mock-repo/lib"
-    mkdir -p "$BATS_TEST_TMPDIR/mock-repo/scripts/lib"
-
-    # doctor.sh mock: exits 0, outputs nothing
-    cat > "$BATS_TEST_TMPDIR/mock-repo/scripts/doctor.sh" <<'DOCTOR'
-#!/usr/bin/env bash
-exit 0
-DOCTOR
-    chmod +x "$BATS_TEST_TMPDIR/mock-repo/scripts/doctor.sh"
-
-    # Copy real helpers that dot-apply.sh needs
-    cp "$BATS_TEST_DIRNAME/../../lib/dot-apply-helpers.sh" \
-        "$BATS_TEST_TMPDIR/mock-repo/lib/dot-apply-helpers.sh"
-    cp "$BATS_TEST_DIRNAME/../../lib/log.sh" \
-        "$BATS_TEST_TMPDIR/mock-repo/lib/log.sh"
-    cp "$BATS_TEST_DIRNAME/../../scripts/lib/state.sh" \
-        "$BATS_TEST_TMPDIR/mock-repo/scripts/lib/state.sh"
-
-    # Export REPO_ROOT override used by tests (dot-apply.sh derives REPO_ROOT from BASH_SOURCE)
-    # We instead use a wrapper that sets REPO_ROOT before sourcing the script.
     export PATH="$BATS_TEST_TMPDIR/mocks:$PATH"
-    export _MOCK_REPO_ROOT="$BATS_TEST_TMPDIR/mock-repo"
 }
 
-# Helper: run dot-apply.sh with an overridden REPO_ROOT
+# Helper: invoke the real dot-apply.sh script.
+# Tests that assert on file content (not exit code) call run_apply directly
+# and use || true since the real doctor.sh runs in an isolated HOME.
+# Tests that assert on exit code use: run bash "$SCRIPT" ...
 run_apply() {
-    # Wrap call: override REPO_ROOT inside the script via env var indirection.
-    # We need a wrapper script that sets REPO_ROOT then sources dot-apply.sh internals.
-    # Simpler: just run the real script with REPO_ROOT pointing to mock repo via a wrapper.
-    bash -c "
-        REPO_ROOT='$_MOCK_REPO_ROOT'
-        SCRIPT_DIR=\"\$REPO_ROOT/scripts\"
-        source \"\$REPO_ROOT/lib/dot-apply-helpers.sh\"
-        source \"\$REPO_ROOT/lib/log.sh\" 2>/dev/null || true
-        source \"\$REPO_ROOT/scripts/lib/state.sh\"
-
-        DRY_RUN=0
-        ENABLE_FLAGS=()
-        DISABLE_FLAGS=()
-
-        _append_csv_to_array() {
-            local csv=\"\$1\" arr_name=\"\$2\" item rest
-            rest=\"\$csv\"
-            while [[ -n \"\$rest\" ]]; do
-                item=\"\${rest%%,*}\"
-                item=\"\$(printf \"%s\" \"\$item\" | sed 's/^[[:space:]]*//;s/[[:space:]]*\$//')\"
-                [[ -n \"\$item\" ]] && eval \"\${arr_name}+=(\\\"\\\$item\\\")\"
-                if [[ \"\$rest\" == *,* ]]; then rest=\"\${rest#*,}\"; else rest=\"\"; fi
-            done
-        }
-        _valid_features_csv() {
-            local out=\"\" f
-            for f in \"\${DOTFORGE_FEATURES[@]}\"; do
-                [[ -n \"\$out\" ]] && out+=\", \"
-                out+=\"\$f\"
-            done
-            printf \"%s\" \"\$out\"
-        }
-
-        for arg in \"\$@\"; do
-            case \"\$arg\" in
-                --enable=*)  _append_csv_to_array \"\${arg#--enable=}\"  ENABLE_FLAGS ;;
-                --disable=*) _append_csv_to_array \"\${arg#--disable=}\" DISABLE_FLAGS ;;
-            esac
-        done
-
-        for _f in \"\${ENABLE_FLAGS[@]+\"\${ENABLE_FLAGS[@]}\"}\"\
-                  \"\${DISABLE_FLAGS[@]+\"\${DISABLE_FLAGS[@]}\"}\"
-        do
-            if ! state_valid_feature \"\$_f\"; then
-                printf '✗ unknown feature: %s (valid: %s)\n' \"\$_f\" \"\$(_valid_features_csv)\" >&2
-                exit 2
-            fi
-        done
-
-        if [[ \"\${#ENABLE_FLAGS[@]}\" -gt 0 || \"\${#DISABLE_FLAGS[@]}\" -gt 0 ]]; then
-            state_init
-            for _f in \"\${ENABLE_FLAGS[@]+\"\${ENABLE_FLAGS[@]}\"}\"  ; do state_set \"features.\${_f}\" true;  done
-            for _f in \"\${DISABLE_FLAGS[@]+\"\${DISABLE_FLAGS[@]}\"}\" ; do state_set \"features.\${_f}\" false; done
-            chezmoi_toml_sync
-        fi
-        exit 0
-    " -- "$@"
+    bash "$SCRIPT" "$@" || true
 }
 
 # ── --enable single feature ──
@@ -169,12 +92,12 @@ run_apply() {
 # ── Unknown feature → exit 2 ──
 
 @test "dot-apply --enable=nonexistent_flag: exit 2" {
-    run run_apply --enable=nonexistent_flag
+    run bash "$SCRIPT" --enable=nonexistent_flag
     [ "$status" -eq 2 ]
 }
 
 @test "dot-apply --enable=nonexistent_flag: error message lists valid features" {
-    run run_apply --enable=nonexistent_flag
+    run bash "$SCRIPT" --enable=nonexistent_flag
     [[ "$output" == *"unknown feature: nonexistent_flag"* ]]
     [[ "$output" == *"docker_desktop"* ]]
     [[ "$output" == *"ai_assistants"* ]]
@@ -182,7 +105,7 @@ run_apply() {
 }
 
 @test "dot-apply --enable=bad_flag: exit 2 (unknown flag)" {
-    run run_apply --enable=bad_flag
+    run bash "$SCRIPT" --enable=bad_flag
     [ "$status" -eq 2 ]
 }
 
@@ -244,6 +167,18 @@ TOML
 @test "dot-apply --dry-run --enable=docker_desktop: prints 'would enable' message" {
     run bash "$SCRIPT" --dry-run --enable=docker_desktop
     [[ "$output" == *"would enable: docker_desktop"* ]]
+}
+
+# ── Same-feature enable+disable conflict → exit 2 ──
+
+@test "dot-apply --enable=X --disable=X: exit 2 on same-feature conflict" {
+    run bash "$SCRIPT" --enable=docker_desktop --disable=docker_desktop
+    [ "$status" -eq 2 ]
+}
+
+@test "dot-apply --enable=X --disable=X: error message names the conflicting feature" {
+    run bash "$SCRIPT" --enable=docker_desktop --disable=docker_desktop
+    [[ "$output" == *"conflicting --enable and --disable for feature: docker_desktop"* ]]
 }
 
 # ── Real script: unknown argument still exits 2 ──
