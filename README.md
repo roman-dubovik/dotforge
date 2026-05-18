@@ -1,100 +1,451 @@
-# roman-dubovik/dotforge
+# dotforge
 
-Personal Mac bootstrap. One command on a fresh Mac:
+Opinionated Mac bootstrap. One command on a fresh machine installs everything: CLI tools, GUI apps,
+dotfiles, SSH keys from Bitwarden, macOS defaults, login items, and a `dot` CLI for day-to-day sync.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/docs/install.sh | bash
 ```
 
-## What it does
+macOS only · bash 3.2+ · chezmoi · Bitwarden · Homebrew
 
-1. Installs Xcode Command Line Tools
-2. Installs Homebrew
-3. Installs CLI tools and GUI apps from `Brewfile`
-4. Installs curl-based toolchains: oh-my-zsh, powerlevel10k, zsh plugins, nvm + Node LTS, pnpm, maestro
-5. Replays CLI globals (npm/pnpm/cargo/go/pip) from `cli-globals.txt`
-6. Sets up dotfiles (`.zshrc`, `.gitconfig`, `~/.ssh/config`) via [chezmoi](https://chezmoi.io)
-7. Restores SSH keys from Bitwarden (item: `dotforge-ssh-<profile>`)
-8. Applies login items and loads custom LaunchAgents from `~/Library/LaunchAgents/`
-9. Applies macOS system defaults (Dock, Finder, Keyboard, Screenshots, Trackpad, Safari)
+---
 
-Takes ~15-20 minutes on a clean machine.
+## What's new (May 2026)
 
-## Subcommands
+Shipped in slices 2c and 2d:
 
-Run `bootstrap.sh` with one of these subcommands:
+- **`dot apply`** — runs `chezmoi apply`, then prints a before/after doctor delta so you see exactly
+  what changed. Accepts `--dry-run` to preview without touching the filesystem.
+- **`dot snapshot`** — captures the current state of CLI globals, login items, and macOS defaults
+  into tracked files and commits them automatically.
+- **`dot pull`** — fetches the repo, fast-forwards, applies, and runs `dot doctor --strict` to
+  surface any drift immediately.
+- **Feature flags** — six toggles (`docker_desktop`, `ai_assistants`, `vpn_suite`, `office_suite`,
+  `media_tools`, `design_tools`) declared in `chezmoi.toml.tmpl`. The Brewfile regenerates on every
+  `chezmoi apply` based on the flags that are on.
+- **`scan-macos --capture`** — snapshots current `defaults read` output into a tracked file, so your
+  macOS settings round-trip through git.
+- **bats test suite** — smoke tests for doctor, apply, snapshot, pull, and feature-flag templating.
 
-- `setup` — full Mac bootstrap
-- `update` — chezmoi update + apply
-- `sync` — promote local extras into the canonical Brewfile
-- `customize` — re-pick Brewfile sections and toggle feature flags (docker, AI assistants, VPN suite, etc.)
-- `add-key` — upload SSH keys to Bitwarden (bulk or single)
-- `scan-cli` — classify everything in PATH; capture globals
-- `scan-macos` — print current macOS System Settings as `defaults write` commands
-- `scan-autostart` — dump current login items + LaunchAgents survey
-- `doctor` — read-only sync check: 8 diagnostic checks against canonical state, exits 0/1/2
-  - (or use `dot doctor` from PATH after `chezmoi apply` — same checks, same exit codes)
-- `apply` — apply chezmoi dotfiles + show before/after doctor delta; `--dry-run` previews diff
-  - (or use `dot apply` from PATH after `chezmoi apply`)
-- `snapshot` — capture current machine state (CLI globals, login items, macOS defaults) into canonical files + git commit; `--no-cli` / `--no-autostart` / `--no-macos` to skip individual scanners
-  - (or use `dot snapshot` from PATH after `chezmoi apply`)
-- `pull` — sync from origin (git pull --ff-only), chezmoi apply, doctor; strict bail on any error
-  - (or use `dot pull` from PATH after `chezmoi apply`)
-- `fork` — clone+personalize this repo under your own GitHub
-- `browse` — read-only walkthrough
+---
 
-## Profiles
+dotforge is a shell-based Mac provisioning system built around chezmoi for dotfiles, Homebrew for
+packages, and Bitwarden for secrets. It is not a general-purpose dotfiles manager and not trying to
+be nix-darwin or Ansible. The scope is deliberate: one person, macOS, opinionated defaults.
 
-- `personal` — your own Macs
-- `work` — corporate Macs (uses different SSH keys, git email)
+Compared to chezmoi alone: dotforge adds Brewfile archetypes, Bitwarden-backed SSH distribution,
+macOS system defaults, login-item provisioning, and a `dot` CLI for ongoing sync and drift detection.
+Compared to nix-darwin: less reproducibility, much shallower learning curve — a shell script you can
+read in an afternoon. See [Adjacent tools](#adjacent-tools) for a full comparison grid.
 
-## Bitwarden secrets
+---
 
-The bootstrap reads SSH keys from Bitwarden items named:
+## Install
 
-- `dotforge-ssh-personal` — attachments: `id_ed25519_personal` + `.pub`
-- `dotforge-ssh-work` — same for work
+### New Mac (curl)
 
-Each item has custom fields: `profile`, `created_at`, `fingerprint`, `algorithm`.
+```bash
+curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/docs/install.sh | bash
+```
 
-## Roadmap
+The installer checks for macOS, installs Xcode Command Line Tools if absent, installs Homebrew,
+clones the repo to `~/dotforge` (or `$DOTFORGE_INSTALL_DIR`), and runs `bootstrap.sh setup`.
+It is idempotent: a second run does `git pull --ff-only` and re-applies rather than cloning on top.
 
-**Plan 1 — Bootstrap baseline** (done) — Xcode CLT, Homebrew, Brewfile, dotfiles via chezmoi, SSH keys from Bitwarden, Claude config, `fork` subcommand for reuse.
+Environment overrides:
 
-**Plan 1.5 — Closing the manual-step gap** (done) — Curl-toolchains hook (oh-my-zsh, p10k, nvm + Node LTS, pnpm, maestro, zsh plugins), macOS defaults hook (~35 keys across Dock/Finder/Screenshots/Keyboard/Trackpad/UI/Safari), `scan-macos` subcommand for snapshotting current state.
+```bash
+DOTFORGE_REPO_URL=https://github.com/your-fork/dotforge \
+DOTFORGE_BRANCH=main \
+DOTFORGE_INSTALL_DIR=~/my-dotforge \
+  curl -fsSL ... | bash
+```
 
-**Plan 2 — slices 2a–2d shipped**:
-- `bootstrap.sh doctor` — 8-check read-only diagnostic (chezmoi state, Brewfile, CLI globals, curl-toolchains, SSH keys, macOS defaults, login items, repo sync) — **done** (slice 1).
-- `dot` CLI namespace — `~/.local/bin/dot` shim installed via `chezmoi apply`; subcommands: `doctor`, `help`, `version` — **done** (slice 2a).
-- Persistent Brewfile archetypes — `brewfile_archetype` stored in `~/.config/chezmoi/chezmoi.toml`; hook auto-regenerates `Brewfile.local` on every `chezmoi apply` — **done** (slice 2b).
-- `dot apply` / `dot snapshot` / `dot pull` — unified chezmoi + brew + macOS state operations — **shipped 2026-05-16** (slice 2c).
-- Feature flags (`docker_desktop`, `ai_assistants`, `vpn_suite`, `office_suite`, `media_tools`, `design_tools`) + full macOS capture in `dot snapshot` (3 scanners: CLI globals, login items, macOS defaults) — **shipped 2026-05-17** (slice 2d).
-- Slice 2e (programmatic `dot apply --enable=X --disable=Y` + `local_llm` feature) — **pending**.
+### Existing repo (manual)
 
-**Plan 3 — Multi-machine sync** (pending) — active reconciliation between machines (e.g. detecting that mac-mini has a brew package mbp doesn't, or that one Mac drifted from the canonical state) with conflict resolution. Today distribution is one-way via chezmoi + git; two-tier Bitwarden items (`dotforge-ssh-<profile>` vs `dotforge-ssh-<profile>-<machine>`) handle key scoping but not state reconciliation.
+```bash
+git clone https://github.com/roman-dubovik/dotforge ~/dotforge
+cd ~/dotforge
+./bootstrap.sh setup
+```
 
-**Config sync gaps** (un-numbered, considered for Plan 1.5+):
-- App-specific configs not auto-restored: Raycast, VS Code / Cursor settings + extensions, JetBrains plugins, iTerm / Warp / Ghostty profiles, Hammerspoon, Rectangle / BetterDisplay
-- Browser extensions, mail accounts, app subscription logins — manual by Apple-platform constraints
+After the first install, `dot setup` is also available as a shorter alias (see [Commands](#commands)).
+
+### Verify
+
+```bash
+dot doctor
+```
+
+All eight checks should pass. Exit code 0 = clean, 1 = warnings, 2 = failures.
+
+### Uninstall
+
+No one-command uninstall — undoing `chezmoi apply` on a live machine is risky. Manual steps:
+
+```bash
+chezmoi forget --all         # stop tracking dotfiles
+chezmoi remove               # optional: delete managed files from $HOME
+rm -rf ~/dotforge            # remove the repo
+rm ~/.local/bin/dot          # remove the CLI shim
+```
+
+Homebrew packages are not removed automatically — run `brew bundle cleanup` against an empty Brewfile
+if you want them gone.
+
+---
+
+## Quick start
+
+`bootstrap.sh setup` is an interactive wizard. It installs dependencies, prompts for machine-specific
+choices, and runs `chezmoi apply` at the end.
+
+Sample session on a fresh Mac:
+
+```
+dotforge — Mac bootstrap setup
+
+→ Checking prerequisites…
+  ✓ Xcode Command Line Tools
+  ✓ Homebrew 4.5.1
+  ✓ chezmoi 2.60.2
+
+? Machine name [MacBook-Pro]:  work-mbp
+? Profile (personal / work) [personal]:  work
+? Brewfile archetype:
+    1. full         — everything: GUI apps, AI tools, media, design
+    2. minimal-dev  — CLI tools only, no heavy GUI apps
+    3. cli-server   — headless: git, brew essentials, no GUI
+    4. custom       — hand-pick sections interactively
+  Choice [1]:  2
+
+? Feature flags (press Enter to keep defaults):
+    docker_desktop   [on]:
+    ai_assistants    [on]:
+    vpn_suite        [on]:
+    office_suite     [off]:
+    media_tools      [on]:  off
+    design_tools     [on]:  off
+
+→ Initialising chezmoi…
+→ Installing Homebrew packages (Brewfile)…
+→ Installing curl toolchains (oh-my-zsh, p10k, nvm, pnpm, maestro)…
+→ Pulling SSH keys from Bitwarden (item: dotforge-ssh-work)…
+→ Applying macOS system defaults…
+→ Configuring login items and LaunchAgents…
+→ Installing dot CLI to ~/.local/bin/dot…
+
+✓ Bootstrap complete. Run 'dot doctor' to verify.
+```
+
+---
+
+## How it works
+
+```text
+curl install.sh | bash
+        │
+        ▼
+bootstrap.sh setup
+        │
+        ▼
+chezmoi init + apply
+        │
+        ├──────────────────────────────────────────────────────────────┐
+        │                                                              │
+        ▼                                                              ▼
+run_onchange_20-apply-brewfile          run_once_before_10-install-bw
+        │                                        │
+        ▼                                        ▼
+brew bundle (Brewfile + Brewfile.local)   Bitwarden CLI install
+                                                 │
+        ┌────────────────────────────────────────┘
+        │
+        ├─→ run_onchange_25-install-curl-toolchains  (oh-my-zsh, p10k, nvm, pnpm, maestro)
+        ├─→ run_onchange_30-install-cli-globals       (npm/pnpm/cargo/go/pip globals)
+        ├─→ run_onchange_50-pull-ssh-keys             (Bitwarden → ~/.ssh/)
+        ├─→ run_onchange_60-apply-macos-defaults      (defaults write, ~35 keys)
+        └─→ run_onchange_70-apply-login-autostart     (login items + LaunchAgents)
+                                                              │
+                                                              ▼
+                                                  dot CLI → ~/.local/bin/dot
+                                                              │
+                                         ┌────────────────────┼────────────────────┐
+                                         ▼                    ▼                    ▼
+                                    dot doctor           dot apply           dot snapshot
+                                    (8 checks)     (apply + delta)    (capture + commit)
+                                                              │
+                                                              ▼
+                                                         dot pull
+                                                  (fetch + ff + apply + doctor)
+```
+
+---
+
+## Commands
+
+Full reference for all dotforge entry points.
+
+| Layer | Subcommand | What it does |
+|---|---|---|
+| `bootstrap.sh` | `setup` | Full Mac bootstrap: Xcode CLT, Homebrew, chezmoi init, prompts, chezmoi apply |
+| `bootstrap.sh` | `update` | `git pull` + `chezmoi apply` — day-to-day refresh |
+| `bootstrap.sh` | `sync` | Promote locally-installed brew packages and `/Applications` into the canonical Brewfile |
+| `bootstrap.sh` | `customize` | Interactive Brewfile section picker; re-runs feature flag prompts |
+| `bootstrap.sh` | `add-key` | Encrypt and upload SSH keys to Bitwarden (bulk or single key) |
+| `bootstrap.sh` | `scan-cli` | Classify everything on PATH; print or capture to `cli-globals.txt` |
+| `bootstrap.sh` | `scan-macos` | Print current macOS System Settings as `defaults write` commands; `--capture` writes to tracked file |
+| `bootstrap.sh` | `scan-autostart` | Dump current login items + LaunchAgents survey |
+| `bootstrap.sh` | `doctor` | Identical to `dot doctor` — 8 read-only checks |
+| `bootstrap.sh` | `fork` | Clone + personalize this repo under your own GitHub account |
+| `bootstrap.sh` | `browse` | Read-only interactive walkthrough of what bootstrap does |
+| `dot` | `setup` | Alias for `bootstrap.sh setup` — available after first install |
+| `dot` | `doctor` | 8 read-only sync checks; exit 0/1/2 |
+| `dot` | `apply` | `chezmoi apply` + before/after doctor delta; accepts `--dry-run` |
+| `dot` | `snapshot` | `scan-cli --capture` + `scan-login-autostart --capture` + `scan-macos --capture` → auto-commit |
+| `dot` | `pull` | `git fetch` + `ff-only` + `dot apply` + `dot doctor --strict` |
+| `dot` | `version / help` | Print version hash + branch, or show usage |
+
+---
+
+## Feature flags
+
+Declared in `chezmoi/chezmoi.toml.tmpl` under `[data.features]`. The Brewfile template reads these
+flags and regenerates `Brewfile.local` on every `chezmoi apply`.
+
+| Flag | Default | What it gates |
+|---|---|---|
+| `docker_desktop` | on | Docker Desktop GUI app |
+| `ai_assistants` | on | Claude, ChatGPT, Copilot-related desktop apps |
+| `vpn_suite` | on | VPN client (Wireguard, Tailscale, or corp VPN) |
+| `office_suite` | **off** | Microsoft Office / LibreOffice |
+| `media_tools` | on | Spotify, VLC, media utilities |
+| `design_tools` | on | Figma, image/video editing apps |
+
+To toggle a flag: edit `~/.config/chezmoi/chezmoi.toml`, set the value, then run `dot apply`.
+The Brewfile regenerates automatically; packages that are no longer needed are not removed — run
+`brew bundle cleanup` manually if you want them uninstalled.
+
+---
+
+## Archetypes
+
+Chosen during `bootstrap.sh setup` (or `bootstrap.sh customize`), persisted as
+`brewfile_archetype` in `~/.config/chezmoi/chezmoi.toml`.
+
+| Archetype | Use case | Included |
+|---|---|---|
+| `full` | Personal Mac, daily driver | All brew formulae and casks; all feature flags respected |
+| `minimal-dev` | Focused development machine | CLI tools + dev apps; no heavy GUI, no media/design |
+| `cli-server` | Headless or remote Mac | Core brew formulae only; no GUI casks |
+| `custom` | Hand-picked | Interactive section picker; enables exactly what you select |
+
+---
+
+## Scanners
+
+Three read-only scanners capture the current state of a Mac and write it into tracked files.
+
+| Scanner | Invocation | Output file |
+|---|---|---|
+| `scan-cli` | `bootstrap.sh scan-cli --capture` | `cli-globals.txt` |
+| `scan-login-autostart` | `bootstrap.sh scan-autostart --capture` | `login-items.txt` |
+| `scan-macos-defaults` | `bootstrap.sh scan-macos --capture` | `chezmoi/dot_config/dotforge/macos-defaults.txt` |
+
+`dot snapshot` calls all three in sequence and commits the result. The files are chezmoi-managed, so
+the next `chezmoi apply` on any machine will replay the captured state.
+
+---
+
+## chezmoi hooks
+
+chezmoi runs these scripts automatically on `chezmoi apply`. Scripts named `run_onchange_*` only
+re-execute when their content changes (or when a template input changes); the `run_once_before_*`
+script runs once per machine lifetime.
+
+| Hook file | Trigger | What it does |
+|---|---|---|
+| `run_once_before_10-install-bw.sh` | Once (first apply) | Installs Bitwarden CLI via npm |
+| `run_onchange_20-apply-brewfile.sh.tmpl` | Brewfile or flags change | Runs `brew bundle`; generates `Brewfile.local` from archetype + feature flags |
+| `run_onchange_25-install-curl-toolchains.sh` | Script content changes | Installs oh-my-zsh, powerlevel10k, zsh plugins, nvm + Node LTS, pnpm, maestro |
+| `run_onchange_30-install-cli-globals.sh.tmpl` | `cli-globals.txt` changes | Replays npm/pnpm/cargo/go/pip global packages |
+| `run_onchange_50-pull-ssh-keys.sh.tmpl` | SSH config template changes | Fetches SSH keys from Bitwarden; writes to `~/.ssh/` |
+| `run_onchange_60-apply-macos-defaults.sh` | Defaults file changes | Applies ~35 `defaults write` keys across Dock, Finder, Keyboard, Trackpad, Screenshots, Safari |
+| `run_onchange_70-apply-login-autostart.sh` | `login-items.txt` changes | Configures login items via `osascript`; loads custom LaunchAgents from `~/Library/LaunchAgents/` |
+
+---
+
+## Cross-machine sync
+
+dotforge supports multiple Macs through git. Each machine runs its own `chezmoi apply` against the
+same repo; machine-specific differences live in chezmoi templates (profile, machine name, feature
+flags) rather than branching the repo.
+
+```text
+Mac A (work-mbp)                        Mac B (home-mini)
+
+dot snapshot                            dot snapshot
+     │                                       │
+     ▼                                       ▼
+git push ──────────────────────────────→ git pull
+                                             │
+                                             ▼
+                                        dot pull
+                                  (fetch + ff + apply + doctor)
+```
+
+SSH keys are scoped per profile: `dotforge-ssh-personal` for personal Macs, `dotforge-ssh-work`
+for corporate machines. The `run_onchange_50-pull-ssh-keys.sh.tmpl` hook fetches the right set based
+on the profile in `chezmoi.toml`. Conflict resolution is manual — `dot doctor` surfaces drift;
+automatic reconciliation is Plan 3 work (see [ROADMAP.md](./ROADMAP.md)).
+
+---
+
+## Feature matrix
+
+| Feature | Status | Notes |
+|---|---|---|
+| Xcode CLT install | ✅ shipped | Plan 1 |
+| Homebrew install + Brewfile | ✅ shipped | Plan 1 |
+| chezmoi dotfiles (`.zshrc`, `.gitconfig`, `~/.ssh/config`) | ✅ shipped | Plan 1 |
+| SSH keys via Bitwarden | ✅ shipped | Plan 1 |
+| `bootstrap.sh fork` (personalize for own account) | ✅ shipped | Plan 1 |
+| curl-toolchains (oh-my-zsh, p10k, nvm, pnpm, maestro) | ✅ shipped | Plan 1.5 |
+| macOS defaults baseline (~35 keys) | ✅ shipped | Plan 1.5 |
+| `scan-macos` subcommand | ✅ shipped | Plan 1.5 |
+| `bootstrap.sh doctor` (8 checks) | ✅ shipped | Slice 1 |
+| `dot` CLI namespace (chezmoi-managed shim) | ✅ shipped | Slice 2a |
+| Brewfile archetypes (4 options) | ✅ shipped | Slice 2b |
+| `dot apply` + dry-run | ✅ shipped | Slice 2c |
+| `dot snapshot` | ✅ shipped | Slice 2c |
+| `dot pull` | ✅ shipped | Slice 2c |
+| Feature flags (6) | ✅ shipped | Slice 2d |
+| `scan-macos --capture` | ✅ shipped | Slice 2d |
+| bats test suite | ✅ shipped | Slice 2d |
+| `dot setup` alias | ✅ shipped | Public launch |
+| curl installer (`docs/install.sh`) | ✅ shipped | Public launch |
+| GitHub Pages landing (`docs/index.html`) | ✅ shipped | Public launch |
+| `dot apply --enable=X --disable=Y` (programmatic flag toggle) | 🚧 deferred | Slice 2e |
+| Persistent bootstrap menu | 🚧 deferred | Slice 2e |
+| Multi-machine reconciliation (conflict detection) | 📅 planned | Plan 3 |
+| App-specific config restore (Raycast, VS Code, JetBrains, iTerm) | 📅 planned | Plan 3+ |
+| Browser extensions, mail accounts, app subscriptions | 📅 out of scope | Apple platform constraints |
+
+---
+
+## Limitations & honesty
+
+**Static, not dynamic.** dotforge applies a snapshot of configuration. It does not watch for
+drift and it does not automatically re-apply when settings change. Run `dot doctor` to check state,
+`dot apply` to re-apply.
+
+**macOS only.** There is no Linux support and no Windows support. These are not planned.
+The bootstrap assumes Darwin; the installer exits immediately on any other OS.
+
+**Bitwarden is required for SSH keys.** If you do not use Bitwarden, you will need to distribute
+SSH keys manually and skip or modify `run_onchange_50-pull-ssh-keys.sh.tmpl`. There is no 1Password,
+Keychain, or other secrets store integration.
+
+**No full app-settings restore.** Installed apps are tracked; their configuration is not. The
+following are out of scope for the foreseeable future because the Apple platform does not provide a
+reliable programmatic path:
+
+- Raycast extensions and settings
+- VS Code / Cursor extensions and user settings (the JSON files can be tracked; extensions cannot)
+- JetBrains plugin lists and IDE settings
+- iTerm2 / Warp / Ghostty profiles
+- Hammerspoon, Rectangle, BetterDisplay configuration
+- Browser extensions and signed-in sessions
+- App Store subscriptions and in-app logins
+
+**Feature flag changes do not uninstall packages.** Toggling a flag off and running `dot apply`
+will stop installing the associated packages in the future. Packages already on disk remain. Run
+`brew bundle cleanup` if you want them removed.
+
+**`run_onchange_*` scripts re-run on content change, not on state.** If a script fails halfway
+through, chezmoi considers it not-yet-run and will retry on next apply. If it succeeds but you later
+uninstall what it installed, chezmoi will not re-run it until the script content changes.
+
+---
+
+## Adjacent tools
+
+If dotforge doesn't fit, these are the honest alternatives:
+
+| Tool | What it does | When to prefer it |
+|---|---|---|
+| **[chezmoi](https://chezmoi.io)** | Dotfiles manager with templating and secrets backends | You only need dotfiles managed, not full Mac provisioning |
+| **[nix-darwin](https://github.com/LnL7/nix-darwin)** | Declarative macOS configuration via Nix | You want full reproducibility, rollback, and a functional approach; steeper learning curve |
+| **[dotbot](https://github.com/anishathalye/dotbot)** | Symlink manager + task runner via YAML config | You want a simpler, more configurable approach without the chezmoi template DSL |
+| **[mackup](https://github.com/lra/mackup)** | Backs up and restores app settings via cloud storage | You care primarily about app settings (not packages or system config) |
+| **[Ansible](https://github.com/ansible/ansible)** | General-purpose automation with Mac support | You need to manage multiple machines centrally, prefer idempotent YAML playbooks |
+
+dotforge is closest to "chezmoi + Homebrew + a shell orchestrator." If you are already happy with
+chezmoi and just missing the Brewfile and macOS-defaults pieces, you might get 80% of the value by
+writing a small wrapper yourself rather than adopting the full dotforge opiniation.
+
+---
 
 ## Using this for your own Mac
 
-This repo is designed to be forked and personalized for your GitHub account, name, and email.
-
-The `bootstrap.sh fork` subcommand automates the entire process:
+dotforge is designed to be forked and personalized.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/bootstrap.sh | bash -s -- fork
 ```
 
-This command:
-1. Clones the repo to a directory you choose
-2. Runs `personalize-fork.sh`, which finds and replaces:
-   - `roman-dubovik/dotforge` → your GitHub repo
-   - `Roman Dubovik` → your name
-   - `booroman@gmail.com` → your email
-   - `id_ed25519_github_booroman` → `id_ed25519` (optional, via `--reset-ssh`)
-3. Walks you through each change with confirmation prompts
-4. Offers to create the new repo on your GitHub and push
+`bootstrap.sh fork` clones the repo and runs `scripts/personalize-fork.sh`, which replaces:
 
-Note: The Bitwarden item prefix `dotforge-ssh-*` is not user-configurable in the fork script. The work-profile email placeholder in `chezmoi/dot_gitconfig.tmpl` requires manual edit post-fork if you use a work profile.
+- `roman-dubovik/dotforge` → your GitHub repo path
+- `Roman Dubovik` → your name
+- `booroman@gmail.com` → your email
+- `id_ed25519_github_booroman` → your SSH key name (optional, `--reset-ssh`)
+
+It walks through each change with confirmation prompts and offers to create the new GitHub repo and
+push.
+
+**Manual edits after fork:** work-profile git email in `chezmoi/dot_gitconfig.tmpl`; Bitwarden item
+names in `run_onchange_50-pull-ssh-keys.sh.tmpl` if you rename them; Brewfile sections via
+`bootstrap.sh customize`.
+
+---
+
+## Development
+
+No build step. Scripts are plain bash; edit and test directly.
+
+```bash
+git clone https://github.com/roman-dubovik/dotforge ~/dotforge
+bash -n bootstrap.sh              # syntax check
+bash -n scripts/doctor.sh
+bash -n docs/install.sh
+```
+
+**Tests** (requires `brew install bats-core`):
+
+```bash
+bats tests/
+```
+
+Covers `dot doctor`, `dot apply --dry-run`, `dot snapshot`, `dot pull`, and feature-flag Brewfile
+templating; runs in a sandboxed fixture in `$TMPDIR`.
+
+**Adding a feature flag:** add to `chezmoi/chezmoi.toml.tmpl` under `[data.features]`; add a
+conditional block to `chezmoi/Brewfile.tmpl`; update the flags table in this README; add a bats test.
+
+**Updating canonical state:**
+
+```bash
+bootstrap.sh scan-cli       # see what's new in PATH
+bootstrap.sh sync           # promote newly-installed packages into Brewfile
+```
+
+See [CHANGELOG.md](./CHANGELOG.md) for per-slice history and [ROADMAP.md](./ROADMAP.md) for
+planned work.
+
+---
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
