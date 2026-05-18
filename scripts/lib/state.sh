@@ -36,8 +36,37 @@ state_valid_feature() {
     return 1
 }
 
+# ── _seed_value_from_chezmoi ──
+# Usage: _seed_value_from_chezmoi FEATURE
+# Reads [data.features].FEATURE from chezmoi.toml.
+# Prints "true" or "false" if found; prints nothing and returns 1 if absent.
+_seed_value_from_chezmoi() {
+    local feature="$1"
+    local chezmoi_file
+    chezmoi_file="$(chezmoi_toml_file)"
+    [[ -f "$chezmoi_file" ]] || return 1
+
+    local val
+    val="$(awk -v feat="$feature" '
+        /^\[data\.features\]/ { in_section = 1; next }
+        /^\[/ { in_section = 0 }
+        in_section && /^[[:space:]]*[^#[:space:]]/ {
+            if (match($0, "^[[:space:]]*" feat "[[:space:]]*=[[:space:]]*")) {
+                v = substr($0, RSTART + RLENGTH)
+                gsub(/[[:space:]#].*$/, "", v)
+                print v
+                exit
+            }
+        }
+    ' "$chezmoi_file")"
+
+    [[ -n "$val" ]] || return 1
+    printf "%s" "$val"
+}
+
 # ── state_init ──
-# Creates state.toml with all-default values if file does not exist.
+# Creates state.toml with default values if file does not exist.
+# Per-feature seed priority: chezmoi.toml [data.features] > DOTFORGE_FEATURE_DEFAULTS.
 # If file exists, is a no-op.
 state_init() {
     local file
@@ -54,11 +83,16 @@ state_init() {
     {
         printf "# ~/.config/dotforge/state.toml\n"
         printf "# Managed by \`dot apply --enable=...\` and \`bootstrap.sh customize\`.\n"
-        printf "# Manual edits allowed but will be overwritten on next CLI call.\n"
+        printf "# Manual edits to feature values will be overwritten; comments and other keys are preserved.\n"
         printf "[features]\n"
         local i
         for i in "${!DOTFORGE_FEATURES[@]}"; do
-            printf "%s = %s\n" "${DOTFORGE_FEATURES[$i]}" "${DOTFORGE_FEATURE_DEFAULTS[$i]}"
+            local feat="${DOTFORGE_FEATURES[$i]}"
+            local val
+            if ! val="$(_seed_value_from_chezmoi "$feat")"; then
+                val="${DOTFORGE_FEATURE_DEFAULTS[$i]}"
+            fi
+            printf "%s = %s\n" "$feat" "$val"
         done
     } > "$tmp"
 

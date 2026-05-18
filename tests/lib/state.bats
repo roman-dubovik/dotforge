@@ -38,6 +38,44 @@ setup() {
     done
 }
 
+@test "state_init: seeds from chezmoi.toml when present (office_suite=true)" {
+    mkdir -p "$(dirname "$DOTFORGE_CHEZMOI_TOML")"
+    cat > "$DOTFORGE_CHEZMOI_TOML" <<'TOML'
+[data]
+    machine_name = "test-box"
+
+[data.features]
+    docker_desktop = true
+    ai_assistants = true
+    vpn_suite = true
+    office_suite = true
+    media_tools = true
+    design_tools = true
+TOML
+
+    state_init
+    run state_get features.office_suite
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+}
+
+@test "state_init: falls back to default when feature absent from chezmoi.toml" {
+    # chezmoi.toml exists but does not have office_suite
+    mkdir -p "$(dirname "$DOTFORGE_CHEZMOI_TOML")"
+    cat > "$DOTFORGE_CHEZMOI_TOML" <<'TOML'
+[data]
+    machine_name = "test-box"
+
+[data.features]
+    docker_desktop = true
+TOML
+
+    state_init
+    run state_get features.office_suite
+    [ "$status" -eq 0 ]
+    [ "$output" = "false" ]
+}
+
 @test "state_init: is idempotent (second call does not overwrite)" {
     state_init
     # Manually set a value
