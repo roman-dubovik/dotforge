@@ -285,25 +285,66 @@ fi
 if [[ "$STASH_SAVED" -eq 1 ]]; then
     log_info "Restoring local changes (stash pop)…"
     if ! git_stash_pop "$CHEZMOI_REPO" "$STASH_REF"; then
-        # Conflict on pop: use same side as pull-conflict resolution.
-        # In stash-pop context "ours" = HEAD (already merged) = correct for ours mode.
-        # For interactive mode, fall back to "ours" (preserve merged state).
-        local_pop_mode="ours"
+        # In git stash pop terminology the sides are INVERTED relative to pull:
+        #   --ours   = HEAD / the merged tree (the "remote" content after pull)
+        #   --theirs = the stash itself (the user's pre-pull local work)
+        #
+        # Therefore:
+        #   --resolve=ours   (user wants LOCAL to win on pull conflicts)
+        #     → preserve the stash (pre-pull local work) → use --theirs in pop
+        #   --resolve=theirs (user wants REMOTE to win on pull conflicts)
+        #     → preserve merged HEAD  → use --ours in pop
+        #   --resolve=interactive
+        #     → if stdin is a tty, re-prompt per file; otherwise fall back to
+        #       --theirs (preserve user's pre-pull work) with a prominent warning.
+        case "$RESOLVE_MODE" in
+            ours)        local_pop_mode="theirs" ;;
+            theirs)      local_pop_mode="ours"   ;;
+            interactive) local_pop_mode="theirs" ;;   # fallback; overridden below when tty
+        esac
 
-        log_warn "Stash pop had conflicts — auto-resolving pop conflicts with ${local_pop_mode}…"
+        log_warn "Stash pop had conflicts — auto-resolving pop conflicts (pop side: ${local_pop_mode})…"
         _stash_conflicts="$(git_conflicted_files "$CHEZMOI_REPO")"
+        _resolved_files=""
 
         while IFS= read -r _f; do
             [[ -z "$_f" ]] && continue
-            if ! git_resolve_file "$CHEZMOI_REPO" "$_f" "$local_pop_mode"; then
+            _this_mode="$local_pop_mode"
+
+            # Interactive + real tty → re-prompt per file.
+            if [[ "$RESOLVE_MODE" == "interactive" ]] && [[ -t 0 ]]; then
+                _pop_ans=""
+                printf "Stash-pop conflict in '%s' — keep your pre-pull version? [y/n]: " "$_f"
+                read -r _pop_ans </dev/tty 2>/dev/null || _pop_ans=""
+                case "$_pop_ans" in
+                    y|Y|yes|YES) _this_mode="theirs" ;;
+                    n|N|no|NO)   _this_mode="ours"   ;;
+                    *)
+                        log_warn "Unrecognised answer '${_pop_ans}' for $_f — defaulting to 'theirs' (keep pre-pull local)"
+                        _this_mode="theirs"
+                        ;;
+                esac
+            fi
+
+            if ! git_resolve_file "$CHEZMOI_REPO" "$_f" "$_this_mode"; then
                 log_error "Failed to resolve stash-pop conflict in $_f"
-                log_warn "stash restored, resolve manually"
+                log_warn "stash NOT restored — listed in 'git stash list', resolve manually: run 'git stash list' in chezmoi source"
                 exit 1
             fi
-            log_ok "Stash-pop conflict resolved: $_f (${local_pop_mode})"
+            log_ok "Stash-pop conflict resolved: $_f (pop side: ${_this_mode})"
+            _resolved_files="${_resolved_files} $_f"
         done <<EOF
 $_stash_conflicts
 EOF
+
+        if [[ "$RESOLVE_MODE" == "interactive" ]] && [[ ! -t 0 ]]; then
+            log_warn "interactive mode with no tty — stash-pop conflicts resolved using 'theirs' (pre-pull local content preserved)"
+        fi
+
+        if [[ -n "$_resolved_files" ]]; then
+            log_warn "auto-resolved stash-pop conflict files:${_resolved_files}"
+            log_warn "your original stash is still in 'git stash list' — run: git -C \"$CHEZMOI_REPO\" stash show -p $STASH_REF"
+        fi
 
         log_ok "Stash-pop conflicts resolved."
     else
