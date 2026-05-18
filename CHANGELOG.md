@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Plan 3 MVP — multi-machine reconciliation (detect + manual resolve)**
+- `dot status [--fetch]` — non-destructive divergence report: ahead/behind count vs `origin/<branch>`,
+  working tree cleanliness, uncommitted scanner output files, and `dot doctor` summary (PASS/WARN/FAIL).
+  Exit 0 = in-sync, exit 1 = any divergence.  `--fetch` opt-in for offline-safe default.
+- `dot pull --resolve=ours|theirs|interactive|abort` — four resolve modes:
+  - `abort` (default) — fast-forward only, identical to previous behaviour
+  - `ours` — stash → pull --no-ff → `git checkout --ours` on conflicts → stash pop
+  - `theirs` — stash → pull --no-ff → `git checkout --theirs` on conflicts → stash pop
+  - `interactive` — stash → pull --no-ff → prompt per conflicted file (gum on tty, `read` fallback)
+  - On any failure: stash restored, explicit "stash restored, resolve manually" message
+- `scripts/lib/git-state.sh` — pure git helpers (ahead/behind counts, stash save/pop, conflict
+  detection, file resolution); all take explicit `GIT_DIR` arg for testability
+- `scripts/dot-status.sh` — implementation of `dot status` subcommand
+- `DOTFORGE_DOCTOR_SCRIPT` and `DOTFORGE_CHEZMOI_REPO` env overrides for CI / bats mocking
+- bats tests: `tests/lib/git-state.bats` (17 tests), `tests/scripts/dot-pull-resolve.bats`
+  (24 tests), `tests/scripts/dot-status.bats` (25 tests)
+
 - **Slice 2e — programmatic feature toggles**
 - `dot apply --enable=FEATURE` / `--disable=FEATURE` — toggle feature flags from the CLI; supports
   comma-separated CSV (`--disable=office_suite,media_tools`) and repeated flags; validates names
@@ -21,8 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.config/chezmoi/chezmoi.toml` on every CLI mutation
 - `bootstrap.sh customize` now reads defaults from `state.toml` first (priority:
   `state.toml` > `chezmoi.toml` > hardcoded default) and persists selections back to `state.toml`
-- bats tests: `tests/lib/state.bats` (24 tests), `tests/scripts/dot-apply-features.bats`
-  (14 tests), `tests/scripts/dot-features.bats` (13 tests)
+- bats tests: `tests/lib/state.bats` (34 tests), `tests/scripts/dot-apply-features.bats`
+  (18 tests), `tests/scripts/dot-features.bats` (13 tests)
 - Public launch: README rewrite as landing document
 - GitHub Pages landing site (`docs/index.html` + CSS + JS)
 - Curl-installer (`docs/install.sh`) — self-contained for fresh Mac

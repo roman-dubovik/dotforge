@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# dot pull — fetch + fast-forward pull the chezmoi source repo, apply, then run doctor.
+# dot pull — fetch + pull the chezmoi source repo, apply, then run doctor.
 #
 # Usage:
-#   scripts/dot-pull.sh           # fetch, pull (ff-only), chezmoi apply, dot doctor
-#   scripts/dot-pull.sh --help|-h # print this help
+#   scripts/dot-pull.sh                       # fetch, pull (ff-only), chezmoi apply, dot doctor
+#   scripts/dot-pull.sh --resolve=abort       # same as above (default)
+#   scripts/dot-pull.sh --resolve=ours        # stash → pull → on conflict keep ours → stash pop
+#   scripts/dot-pull.sh --resolve=theirs      # stash → pull → on conflict keep theirs → stash pop
+#   scripts/dot-pull.sh --resolve=interactive # stash → pull → on conflict ask per-file → stash pop
+#   scripts/dot-pull.sh --help|-h             # print this help
 
 set -euo pipefail
 
@@ -15,37 +19,70 @@ source "$REPO_ROOT/lib/log.sh" 2>/dev/null || {
     # fallback no-op loggers if lib/log.sh missing (shouldn't happen in normal flow)
     log_info()    { printf "%s\n" "$*"; }
     log_ok()      { printf "✓ %s\n" "$*"; }
+    log_warn()    { printf "WARN: %s\n" "$*" >&2; }
     log_error()   { printf "ERROR: %s\n" "$*" >&2; }
     log_section() { printf "\n── %s ──\n" "$*"; }
 }
 
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/lib/git-state.sh"
+
 # ── Argument parsing ──
+
+RESOLVE_MODE="abort"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --resolve=abort|--resolve=ours|--resolve=theirs|--resolve=interactive)
+            RESOLVE_MODE="${1#--resolve=}"
+            shift
+            ;;
+        --resolve=*)
+            printf "dot pull: unknown --resolve mode '%s'\n" "${1#--resolve=}" >&2
+            printf "Valid modes: abort, ours, theirs, interactive\n" >&2
+            exit 2
+            ;;
         --help|-h)
             cat <<'EOF'
 dot pull — sync chezmoi source repo and apply dotfiles
 
 Usage:
-  dot pull              Fetch origin, pull --ff-only, chezmoi apply, then run
-                        dot doctor. Exit code matches doctor's exit code.
-  dot pull --help|-h    Print this help.
+  dot pull [--resolve=MODE]    Fetch origin, pull, chezmoi apply, then run
+                               dot doctor. Exit code matches doctor's exit code.
+  dot pull --help|-h           Print this help.
+
+Resolve modes (default: abort):
+  abort         Fast-forward only pull; bail immediately on non-fast-forward.
+                This is the default and is identical to previous behaviour.
+  ours          Stash local changes → pull → on conflict keep local version of
+                each conflicted file → commit → stash pop.
+  theirs        Stash local changes → pull → on conflict take remote version of
+                each conflicted file → commit → stash pop.
+  interactive   Stash → pull → on conflict prompt per file (gum or read -p).
 
 Environment:
   DOTFORGE_BRANCH       Remote branch to pull (default: main).
 
-Steps:
+Steps (abort mode):
   1. chezmoi git -- fetch origin <branch>
   2. chezmoi git -- pull --ff-only origin <branch>
      (If already up-to-date this is a no-op. Non-fast-forward → bail.)
   3. chezmoi apply
   4. dot doctor (exit code propagated)
 
+Steps (ours/theirs/interactive modes):
+  1. chezmoi git -- fetch origin <branch>
+  2. git stash (if working tree dirty)
+  3. chezmoi git -- pull --no-ff origin <branch>  (merge commit even when ff is possible)
+  4. On conflict: resolve per mode
+  5. chezmoi apply
+  6. git stash pop (if stashed)
+  7. dot doctor
+
 Notes:
   - Only 'origin' remote is supported.
-  - No interactive prompts — all feedback via exit codes and log messages.
-  - Ensure SSH keys or git credentials are configured; HTTPS+token may hang.
+  - On any error in ours/theirs/interactive: stash is restored with message.
+  - Ensure SSH keys or git credentials are configured.
 EOF
             exit 0
             ;;
@@ -61,31 +98,283 @@ done
 
 BRANCH="${DOTFORGE_BRANCH:-main}"
 
-# ── Pull flow ──
+# The chezmoi source repo directory for git operations.
+# In tests, override via DOTFORGE_CHEZMOI_REPO.
+CHEZMOI_REPO="${DOTFORGE_CHEZMOI_REPO:-$(chezmoi source-path 2>/dev/null || printf "%s/.local/share/chezmoi" "$HOME")}"
 
-log_section "dot pull"
+# Path to doctor script; override DOTFORGE_DOCTOR_SCRIPT to inject a stub in CI/tests.
+DOCTOR_SCRIPT="${DOTFORGE_DOCTOR_SCRIPT:-$REPO_ROOT/scripts/doctor.sh}"
+
+# ── abort mode (default) — byte-for-byte identical to original behaviour ──
+
+if [[ "$RESOLVE_MODE" == "abort" ]]; then
+    log_section "dot pull"
+
+    # Step 1: fetch
+    log_info "Fetching origin/${BRANCH}…"
+    if ! chezmoi git -- fetch origin "$BRANCH"; then
+        log_error "[dot pull] fetch failed"
+        exit 1
+    fi
+
+    # Step 2: pull --ff-only (up-to-date is a no-op; non-ff git prints error + exits non-zero)
+    log_info "Pulling --ff-only…"
+    if ! chezmoi git -- pull --ff-only origin "$BRANCH"; then
+        log_error "[dot pull] pull failed (likely non-fast-forward — resolve manually)"
+        exit 1
+    fi
+
+    # Step 3: apply chezmoi state
+    log_info "Applying chezmoi state…"
+    if ! chezmoi apply; then
+        log_error "[dot pull] apply failed"
+        exit 1
+    fi
+
+    # Step 4: final health check (exec replaces process; exit code = doctor's exit code)
+    log_section "Final health check"
+    exec bash "$DOCTOR_SCRIPT"
+fi
+
+# ── ours / theirs / interactive modes ──
+
+log_section "dot pull --resolve=${RESOLVE_MODE}"
+
+# Helper: resolve conflicts using the chosen strategy.
+# Iterates all conflicted files and applies git_resolve_file for ours/theirs,
+# or prompts per-file for interactive mode.
+_resolve_conflicts() {
+    local mode="$1"
+    local repo="$2"
+    local conflicted_file f choice
+
+    conflicted_file="$(git_conflicted_files "$repo")"
+    if [[ -z "$conflicted_file" ]]; then
+        return 0
+    fi
+
+    # Save original stdin to fd 3 so interactive prompts can read it even
+    # when the while loop redirects stdin via a here-doc.
+    exec 3<&0
+
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        case "$mode" in
+            ours|theirs)
+                log_info "Resolving conflict in $f (--${mode})…"
+                if ! git_resolve_file "$repo" "$f" "$mode"; then
+                    log_error "Failed to resolve $f via --${mode}"
+                    return 1
+                fi
+                log_ok "Resolved: $f (kept ${mode})"
+                ;;
+            interactive)
+                # Ask user per-file: keep local (ours) or take remote (theirs).
+                # Use gum only when stdin is a tty (gum requires interactive input).
+                choice=""
+                if command -v gum >/dev/null 2>&1 && [[ -t 0 ]]; then
+                    if gum confirm "Conflict in '$f' — keep local version? (no = take remote)"; then
+                        choice="ours"
+                    else
+                        choice="theirs"
+                    fi
+                else
+                    # Try to read from fd 3 (original stdin) or /dev/tty.
+                    # If neither is available, error out — silent defaulting is unsafe.
+                    _ans=""
+                    _got_input=0
+                    if read -r _ans <&3 2>/dev/null; then
+                        _got_input=1
+                    elif [[ -c /dev/tty ]]; then
+                        printf "Conflict in '%s' — keep local? [y/n]: " "$f"
+                        read -r _ans </dev/tty && _got_input=1
+                    fi
+                    if [[ "$_got_input" -eq 0 ]]; then
+                        log_error "interactive mode requires stdin or /dev/tty; use --resolve=ours or --resolve=theirs for non-interactive sessions"
+                        return 1
+                    fi
+                    case "$_ans" in
+                        y|Y|yes|YES) choice="ours"   ;;
+                        n|N|no|NO)   choice="theirs" ;;
+                        *)
+                            log_warn "Unrecognised answer '${_ans}' for '$f' — defaulting to 'theirs' (take remote)"
+                            choice="theirs"
+                            ;;
+                    esac
+                fi
+                log_info "Resolving $f (${choice})…"
+                if ! git_resolve_file "$repo" "$f" "$choice"; then
+                    log_error "Failed to resolve $f"
+                    return 1
+                fi
+                log_ok "Resolved: $f (${choice})"
+                ;;
+        esac
+    done <<EOF
+$conflicted_file
+EOF
+    exec 3<&-
+}
 
 # Step 1: fetch
-log_info "Fetching origin/$BRANCH…"
+log_info "Fetching origin/${BRANCH}…"
 if ! chezmoi git -- fetch origin "$BRANCH"; then
     log_error "[dot pull] fetch failed"
     exit 1
 fi
 
-# Step 2: pull --ff-only (up-to-date is a no-op; non-ff git prints error + exits non-zero)
-log_info "Pulling --ff-only…"
-if ! chezmoi git -- pull --ff-only origin "$BRANCH"; then
-    log_error "[dot pull] pull failed (likely non-fast-forward — resolve manually)"
-    exit 1
+# Step 2: stash working tree if dirty
+STASH_REF=""
+STASH_SAVED=0
+if git_is_dirty "$CHEZMOI_REPO"; then
+    log_info "Stashing local changes…"
+    STASH_REF="$(git_stash_save "$CHEZMOI_REPO" "dot-pull auto-stash $(date +%Y-%m-%dT%H:%M:%S)")" || true
+    if [[ -n "$STASH_REF" ]]; then
+        STASH_SAVED=1
+        log_ok "Stashed as ${STASH_REF}"
+    fi
 fi
 
-# Step 3: apply chezmoi state
+# Cleanup helper: restore stash on any early exit.
+_restore_stash() {
+    if [[ "$STASH_SAVED" -eq 1 ]]; then
+        log_warn "Restoring stash ${STASH_REF}…"
+        # If a merge is in progress, stash pop refuses to run.  Abort it first.
+        if [[ -e "$CHEZMOI_REPO/.git/MERGE_HEAD" ]]; then
+            log_warn "Active merge detected — aborting merge before stash pop…"
+            local _abort_err
+            if ! _abort_err="$(chezmoi git -- merge --abort 2>&1)"; then
+                log_warn "merge --abort failed: ${_abort_err} — stash pop will likely also fail"
+            fi
+        fi
+        if git -C "$CHEZMOI_REPO" stash pop "$STASH_REF" >/dev/null 2>&1; then
+            log_warn "stash restored"
+        else
+            log_error "stash pop failed — stash NOT restored — listed in 'git stash list', resolve manually: run 'git stash list' in chezmoi source"
+        fi
+    fi
+}
+
+# Step 3: merge origin/<branch> (no-ff to allow merge commit even if ff is possible)
+# This avoids the git "diverging branches, can't fast-forward" abort on modern git.
+log_info "Pulling origin/${BRANCH}…"
+PULL_RC=0
+pull_out="$(chezmoi git -- pull --no-ff origin "$BRANCH" 2>&1)" || PULL_RC=$?
+
+if [[ "$PULL_RC" -ne 0 ]]; then
+    # Check if there are actual conflicts to resolve
+    if [[ -n "$(git_conflicted_files "$CHEZMOI_REPO")" ]]; then
+        log_info "Conflicts detected — resolving with mode: ${RESOLVE_MODE}…"
+
+        if ! _resolve_conflicts "$RESOLVE_MODE" "$CHEZMOI_REPO"; then
+            log_error "Conflict resolution failed"
+            _restore_stash
+            exit 1
+        fi
+
+        # Commit the resolution
+        if ! git_commit_no_edit "$CHEZMOI_REPO"; then
+            log_error "Failed to commit resolved merge"
+            _restore_stash
+            exit 1
+        fi
+        log_ok "Merge committed."
+    else
+        log_error "[dot pull] pull failed (non-fast-forward or network error): ${pull_out}"
+        _restore_stash
+        exit 1
+    fi
+fi
+
+# Step 4: apply chezmoi state
 log_info "Applying chezmoi state…"
 if ! chezmoi apply; then
     log_error "[dot pull] apply failed"
+    _restore_stash
     exit 1
 fi
 
-# Step 4: final health check (exec replaces process; exit code = doctor's exit code)
+# Step 5: pop stash
+if [[ "$STASH_SAVED" -eq 1 ]]; then
+    log_info "Restoring local changes (stash pop)…"
+    if ! git_stash_pop "$CHEZMOI_REPO" "$STASH_REF"; then
+        # In git stash pop terminology the sides are INVERTED relative to pull:
+        #   --ours   = HEAD / the merged tree (the "remote" content after pull)
+        #   --theirs = the stash itself (the user's pre-pull local work)
+        #
+        # Therefore:
+        #   --resolve=ours   (user wants LOCAL to win on pull conflicts)
+        #     → preserve the stash (pre-pull local work) → use --theirs in pop
+        #   --resolve=theirs (user wants REMOTE to win on pull conflicts)
+        #     → preserve merged HEAD  → use --ours in pop
+        #   --resolve=interactive
+        #     → if stdin is a tty, re-prompt per file; otherwise fall back to
+        #       --theirs (preserve user's pre-pull work) with a prominent warning.
+        case "$RESOLVE_MODE" in
+            ours)        local_pop_mode="theirs" ;;
+            theirs)      local_pop_mode="ours"   ;;
+            interactive) local_pop_mode="theirs" ;;   # fallback; overridden below when tty
+        esac
+
+        _stash_conflicts="$(git_conflicted_files "$CHEZMOI_REPO")"
+        if [[ -z "$_stash_conflicts" ]]; then
+            # git stash pop failed but no conflicted files → non-conflict failure
+            # (index lock, untracked file collision, corrupt object, etc.). Surface
+            # the actual git diagnostic instead of falsely claiming "resolved".
+            log_error "stash pop failed without conflict markers — likely index lock, untracked-file collision, or repo corruption"
+            log_error "NOTE: chezmoi apply has already run — your \$HOME reflects the pulled state"
+            log_error "stash NOT restored — listed in 'git stash list', resolve manually: run 'git -C \"$CHEZMOI_REPO\" stash pop $STASH_REF' and inspect"
+            exit 1
+        fi
+
+        log_warn "Stash pop had conflicts — auto-resolving pop conflicts (pop side: ${local_pop_mode})…"
+        _resolved_files=""
+
+        while IFS= read -r _f; do
+            [[ -z "$_f" ]] && continue
+            _this_mode="$local_pop_mode"
+
+            # Interactive + real tty → re-prompt per file.
+            if [[ "$RESOLVE_MODE" == "interactive" ]] && [[ -t 0 ]]; then
+                _pop_ans=""
+                printf "Stash-pop conflict in '%s' — keep your pre-pull version? [y/n]: " "$_f"
+                read -r _pop_ans </dev/tty 2>/dev/null || _pop_ans=""
+                case "$_pop_ans" in
+                    y|Y|yes|YES) _this_mode="theirs" ;;
+                    n|N|no|NO)   _this_mode="ours"   ;;
+                    *)
+                        log_warn "Unrecognised answer '${_pop_ans}' for $_f — defaulting to 'theirs' (keep pre-pull local)"
+                        _this_mode="theirs"
+                        ;;
+                esac
+            fi
+
+            if ! git_resolve_file "$CHEZMOI_REPO" "$_f" "$_this_mode"; then
+                log_error "Failed to resolve stash-pop conflict in $_f"
+                log_warn "stash NOT restored — listed in 'git stash list', resolve manually: run 'git stash list' in chezmoi source"
+                exit 1
+            fi
+            log_ok "Stash-pop conflict resolved: $_f (pop side: ${_this_mode})"
+            _resolved_files="${_resolved_files} $_f"
+        done <<EOF
+$_stash_conflicts
+EOF
+
+        if [[ "$RESOLVE_MODE" == "interactive" ]] && [[ ! -t 0 ]]; then
+            log_warn "interactive mode with no tty — stash-pop conflicts resolved using 'theirs' (pre-pull local content preserved)"
+        fi
+
+        if [[ -n "$_resolved_files" ]]; then
+            log_warn "auto-resolved stash-pop conflict files:${_resolved_files}"
+            log_warn "your original stash is still in 'git stash list' — run: git -C \"$CHEZMOI_REPO\" stash show -p $STASH_REF"
+        fi
+
+        log_ok "Stash-pop conflicts resolved."
+    else
+        log_ok "Local changes restored."
+    fi
+fi
+
+# Step 6: final health check
 log_section "Final health check"
-exec bash "$REPO_ROOT/scripts/doctor.sh"
+exec bash "$DOCTOR_SCRIPT"

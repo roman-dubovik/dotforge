@@ -37,7 +37,7 @@ macOS only · bash 3.2+ · chezmoi · Bitwarden · Homebrew
 
 ## What's new (May 2026)
 
-Shipped in slices 2c, 2d, and 2e:
+Shipped in slices 2c, 2d, 2e, and Plan 3 MVP:
 
 - **`dot apply --enable/--disable`** — toggle feature flags from the CLI, persist to
   `~/.config/dotforge/state.toml`, sync to `chezmoi.toml`, then apply. Example:
@@ -48,6 +48,12 @@ Shipped in slices 2c, 2d, and 2e:
   what changed. Accepts `--dry-run` to preview without touching the filesystem.
 - **`dot snapshot`** — captures the current state of CLI globals, login items, and macOS defaults
   into tracked files and commits them automatically.
+- **`dot pull --resolve=ours|theirs|interactive`** — multi-machine conflict resolution.
+  Default (`abort`) is unchanged (ff-only, bail on conflict). `ours`/`theirs` stash local changes,
+  merge, auto-resolve conflicts in favor of the chosen side, restore stash. `interactive` prompts per-file.
+- **`dot status`** — read-only divergence report: ahead/behind counts vs origin, working tree
+  cleanliness, uncommitted scanner outputs, and `dot doctor` summary. Exit 0 if in-sync, 1 if any
+  divergence. Use `--fetch` to update remote refs first.
 - **`dot pull`** — fetches the repo, fast-forwards, applies, and runs `dot doctor` to
   surface any drift immediately (no diff shown — use `dot apply` for before/after delta).
 - **Feature flags** — six toggles (`docker_desktop`, `ai_assistants`, `vpn_suite`, `office_suite`,
@@ -234,7 +240,8 @@ Full reference for all dotforge entry points.
 | `dot` | `apply` | `chezmoi apply` + before/after doctor delta; accepts `--dry-run`, `--enable=FEATURE`, `--disable=FEATURE` |
 | `dot` | `features` | List all feature flags with current values and source (`state.toml` / `chezmoi.toml` / `default`) |
 | `dot` | `snapshot` | `scan-cli --capture` + `scan-login-autostart --capture` + `scan-macos --capture` → auto-commit |
-| `dot` | `pull` | `git fetch` + `ff-only` + `chezmoi apply` + `dot doctor` (exit code propagated; no before/after delta — use `dot apply` for that) |
+| `dot` | `status [--fetch]` | Non-destructive divergence report: ahead/behind, working tree, uncommitted scanner files, doctor summary. Exit 0 = in-sync, 1 = diverged |
+| `dot` | `pull [--resolve=abort\|ours\|theirs\|interactive]` | Fetch + merge + `chezmoi apply` + `dot doctor`. Default (`abort`) = ff-only. `ours`/`theirs`/`interactive` handle merge conflicts |
 | `dot` | `version / help` | Print version hash + branch, or show usage |
 
 ---
@@ -349,8 +356,26 @@ git push ───────────────────────�
 
 SSH keys are scoped per profile: `dotforge-ssh-personal` for personal Macs, `dotforge-ssh-work`
 for corporate machines. The `run_onchange_50-pull-ssh-keys.sh.tmpl` hook fetches the right set based
-on the profile in `chezmoi.toml`. Conflict resolution is manual — `dot doctor` surfaces drift;
-automatic reconciliation is Plan 3 work (see [ROADMAP.md](./ROADMAP.md)).
+on the profile in `chezmoi.toml`.
+
+### Conflict resolution (`dot pull --resolve`)
+
+When two machines diverge (both ran `dot snapshot` and pushed), use `dot pull --resolve=<mode>` to
+merge instead of aborting:
+
+```bash
+dot status                     # check what's ahead/behind before pulling
+dot pull --resolve=ours        # keep local changes on conflict
+dot pull --resolve=theirs      # take remote changes on conflict
+dot pull --resolve=interactive # prompt per-conflicted file
+```
+
+Flow for `ours`/`theirs`: local uncommitted changes are stashed → merge is attempted → conflicts
+resolved automatically → `chezmoi apply` runs → stash is popped. On any failure the stash is
+restored with an explicit message so nothing is lost.
+
+Full three-way merge is Plan 3 future work; current MVP covers the common case of
+content-append conflicts on scanner output files.
 
 ---
 
@@ -378,9 +403,11 @@ automatic reconciliation is Plan 3 work (see [ROADMAP.md](./ROADMAP.md)).
 | `dot setup` alias | ✅ shipped | Public launch |
 | curl installer (`docs/install.sh`) | ✅ shipped | Public launch |
 | GitHub Pages landing (`docs/index.html`) | ✅ shipped | Public launch |
-| `dot apply --enable=X --disable=Y` (programmatic flag toggle) | 🚧 deferred | Slice 2e |
-| Persistent bootstrap menu | 🚧 deferred | Slice 2e |
-| Multi-machine reconciliation (conflict detection) | 📅 planned | Plan 3 |
+| `dot apply --enable=X --disable=Y` (programmatic flag toggle) | ✅ shipped | Slice 2e |
+| Persistent bootstrap menu | ✅ shipped | Slice 2e |
+| `dot status` (divergence report) | ✅ shipped | Plan 3 MVP |
+| `dot pull --resolve=ours/theirs/interactive` (conflict resolution) | ✅ shipped | Plan 3 MVP |
+| Full three-way merge | 📅 planned | Plan 3 future |
 | App-specific config restore (Raycast, VS Code, JetBrains, iTerm) | 📅 planned | Plan 3+ |
 | Browser extensions, mail accounts, app subscriptions | 📅 out of scope | Apple platform constraints |
 
