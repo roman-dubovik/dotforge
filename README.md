@@ -61,7 +61,7 @@ Shipped in slices 2c, 2d, 2e, and Plan 3 MVP:
   `chezmoi apply` based on the flags that are on.
 - **`scan-macos --capture`** — snapshots current `defaults read` output into a tracked file, so your
   macOS settings round-trip through git.
-- **bats test suite** — smoke tests for doctor, apply, snapshot, pull, and feature-flag templating.
+- **bats test suite** — 142 tests covering doctor, apply, snapshot, pull/resolve, status, features, state.toml mutations, and feature-flag templating.
 
 ---
 
@@ -200,7 +200,7 @@ brew bundle (Brewfile + Brewfile.local)   Bitwarden CLI install
         ├─→ run_onchange_25-install-curl-toolchains  (oh-my-zsh, p10k, nvm, pnpm, maestro)
         ├─→ run_onchange_30-install-cli-globals       (npm/pnpm/cargo/go/pip globals)
         ├─→ run_onchange_50-pull-ssh-keys             (Bitwarden → ~/.ssh/)
-        ├─→ run_onchange_60-apply-macos-defaults      (defaults write, ~40 keys)
+        ├─→ run_onchange_60-apply-macos-defaults      (defaults write, 41 keys)
         └─→ run_onchange_70-apply-login-autostart     (login items + LaunchAgents)
                                                               │
                                                               ▼
@@ -387,7 +387,7 @@ content-append conflicts on scanner output files.
 | SSH keys via Bitwarden | ✅ shipped | Plan 1 |
 | `bootstrap.sh fork` (personalize for own account) | ✅ shipped | Plan 1 |
 | curl-toolchains (oh-my-zsh, p10k, nvm, pnpm, maestro) | ✅ shipped | Plan 1.5 |
-| macOS defaults baseline (~40 keys) | ✅ shipped | Plan 1.5 |
+| macOS defaults baseline (41 keys) | ✅ shipped | Plan 1.5 |
 | `scan-macos` subcommand | ✅ shipped | Plan 1.5 |
 | `bootstrap.sh doctor` (8 checks) | ✅ shipped | Slice 1 |
 | `dot` CLI namespace (chezmoi-managed shim) | ✅ shipped | Slice 2a |

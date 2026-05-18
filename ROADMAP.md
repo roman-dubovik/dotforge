@@ -6,7 +6,7 @@ No ETAs. Order within a section is rough priority, not a commitment.
 
 ## Where we are
 
-dotforge is a chezmoi-powered macOS bootstrap framework with CLI automation. Starting from a fresh Mac, it installs Xcode Command Line Tools, Homebrew, and deploys declarative dotfiles (shell config, packages, SSH keys, login items, macOS defaults) via chezmoi templates. The `dot` CLI provides idempotent operations: `dot doctor` for diagnostics, `dot apply` for config sync, `dot snapshot` for cross-machine capture, and `dot pull` for fetching + applying updates. Six feature flags control software categories; four archetypes (full / minimal-dev / cli-server / custom) pre-shape the install experience. Three scanners (CLI globals, login items, macOS defaults) feed git-mediated cross-machine sync.
+dotforge is a chezmoi-powered macOS bootstrap framework with CLI automation. Starting from a fresh Mac, it installs Xcode Command Line Tools, Homebrew, and deploys declarative dotfiles (shell config, packages, SSH keys, login items, macOS defaults) via chezmoi templates. The `dot` CLI provides idempotent operations: `dot doctor` for diagnostics, `dot apply` for config sync (with `--enable/--disable` flag toggles), `dot snapshot` for cross-machine capture, `dot pull` (`--resolve=ours/theirs/interactive/abort`) for fetching + applying updates, `dot status` for non-destructive divergence reports, and `dot features` for listing toggle state. Six feature flags control software categories; four archetypes (full / minimal-dev / cli-server / custom) pre-shape the install experience. Three scanners (CLI globals, login items, macOS defaults) feed git-mediated cross-machine sync.
 
 ## Shipped
 
