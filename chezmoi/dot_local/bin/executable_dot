@@ -8,6 +8,7 @@
 #   dot apply [OPTIONS]    # apply chezmoi dotfiles with delta
 #   dot snapshot [OPTIONS] # capture machine state + git commit
 #   dot pull [OPTIONS]     # sync from origin, apply, doctor
+#   dot setup [OPTIONS]    # bootstrap dotforge (= bootstrap.sh setup)
 #   dot version            # print version and branch
 
 set -euo pipefail
@@ -44,6 +45,10 @@ case "$SUBCOMMAND" in
         shift || true
         exec bash "$REPO_ROOT/scripts/dot-pull.sh" "$@"
         ;;
+    setup)
+        shift || true
+        exec bash "$REPO_ROOT/bootstrap.sh" setup "$@"
+        ;;
     version)
         HASH="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
         BRANCH="$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || echo "detached")"
@@ -62,6 +67,7 @@ Subcommands:
   apply [OPTIONS]               apply chezmoi dotfiles with before/after doctor delta
   snapshot [OPTIONS]            capture current machine state to canonical files + git commit
   pull [OPTIONS]                sync from origin: git pull --ff-only, chezmoi apply, doctor
+  setup [OPTIONS]               bootstrap dotforge (alias for bootstrap.sh setup)
   version                        print version and branch
   help, -h, --help              show this help message
 
