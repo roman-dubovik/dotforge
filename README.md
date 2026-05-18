@@ -19,10 +19,10 @@ Shipped in slices 2c and 2d:
   what changed. Accepts `--dry-run` to preview without touching the filesystem.
 - **`dot snapshot`** — captures the current state of CLI globals, login items, and macOS defaults
   into tracked files and commits them automatically.
-- **`dot pull`** — fetches the repo, fast-forwards, applies, and runs `dot doctor --strict` to
-  surface any drift immediately.
+- **`dot pull`** — fetches the repo, fast-forwards, applies, and runs `dot doctor` to
+  surface any drift immediately (no diff shown — use `dot apply` for before/after delta).
 - **Feature flags** — six toggles (`docker_desktop`, `ai_assistants`, `vpn_suite`, `office_suite`,
-  `media_tools`, `design_tools`) declared in `chezmoi.toml.tmpl`. The Brewfile regenerates on every
+  `media_tools`, `design_tools`) declared in `chezmoi/.chezmoi.toml.tmpl`. The Brewfile regenerates on every
   `chezmoi apply` based on the flags that are on.
 - **`scan-macos --capture`** — snapshots current `defaults read` output into a tracked file, so your
   macOS settings round-trip through git.
@@ -165,7 +165,7 @@ brew bundle (Brewfile + Brewfile.local)   Bitwarden CLI install
         ├─→ run_onchange_25-install-curl-toolchains  (oh-my-zsh, p10k, nvm, pnpm, maestro)
         ├─→ run_onchange_30-install-cli-globals       (npm/pnpm/cargo/go/pip globals)
         ├─→ run_onchange_50-pull-ssh-keys             (Bitwarden → ~/.ssh/)
-        ├─→ run_onchange_60-apply-macos-defaults      (defaults write, ~35 keys)
+        ├─→ run_onchange_60-apply-macos-defaults      (defaults write, ~40 keys)
         └─→ run_onchange_70-apply-login-autostart     (login items + LaunchAgents)
                                                               │
                                                               ▼
@@ -190,7 +190,7 @@ Full reference for all dotforge entry points.
 | Layer | Subcommand | What it does |
 |---|---|---|
 | `bootstrap.sh` | `setup` | Full Mac bootstrap: Xcode CLT, Homebrew, chezmoi init, prompts, chezmoi apply |
-| `bootstrap.sh` | `update` | `git pull` + `chezmoi apply` — day-to-day refresh |
+| `bootstrap.sh` | `update` | `chezmoi update -v` — fetches source repo and applies dotfiles atomically |
 | `bootstrap.sh` | `sync` | Promote locally-installed brew packages and `/Applications` into the canonical Brewfile |
 | `bootstrap.sh` | `customize` | Interactive Brewfile section picker; re-runs feature flag prompts |
 | `bootstrap.sh` | `add-key` | Encrypt and upload SSH keys to Bitwarden (bulk or single key) |
@@ -204,14 +204,14 @@ Full reference for all dotforge entry points.
 | `dot` | `doctor` | 8 read-only sync checks; exit 0/1/2 |
 | `dot` | `apply` | `chezmoi apply` + before/after doctor delta; accepts `--dry-run` |
 | `dot` | `snapshot` | `scan-cli --capture` + `scan-login-autostart --capture` + `scan-macos --capture` → auto-commit |
-| `dot` | `pull` | `git fetch` + `ff-only` + `dot apply` + `dot doctor --strict` |
+| `dot` | `pull` | `git fetch` + `ff-only` + `chezmoi apply` + `dot doctor` (exit code propagated; no before/after delta — use `dot apply` for that) |
 | `dot` | `version / help` | Print version hash + branch, or show usage |
 
 ---
 
 ## Feature flags
 
-Declared in `chezmoi/chezmoi.toml.tmpl` under `[data.features]`. The Brewfile template reads these
+Declared in `chezmoi/.chezmoi.toml.tmpl` under `[data.features]`. The Brewfile template reads these
 flags and regenerates `Brewfile.local` on every `chezmoi apply`.
 
 | Flag | Default | What it gates |
@@ -250,7 +250,7 @@ Three read-only scanners capture the current state of a Mac and write it into tr
 | Scanner | Invocation | Output file |
 |---|---|---|
 | `scan-cli` | `bootstrap.sh scan-cli --capture` | `cli-globals.txt` |
-| `scan-login-autostart` | `bootstrap.sh scan-autostart --capture` | `login-items.txt` |
+| `scan-autostart` (script: `scan-login-autostart.sh`) | `bootstrap.sh scan-autostart --capture` | `login-items.txt` |
 | `scan-macos-defaults` | `bootstrap.sh scan-macos --capture` | `chezmoi/dot_config/dotforge/macos-defaults.txt` |
 
 `dot snapshot` calls all three in sequence and commits the result. The files are chezmoi-managed, so
@@ -266,12 +266,12 @@ script runs once per machine lifetime.
 
 | Hook file | Trigger | What it does |
 |---|---|---|
-| `run_once_before_10-install-bw.sh` | Once (first apply) | Installs Bitwarden CLI via npm |
+| `run_once_before_10-install-bw.sh` | Once (first apply) | Installs Bitwarden CLI, yq, and jq via Homebrew |
 | `run_onchange_20-apply-brewfile.sh.tmpl` | Brewfile or flags change | Runs `brew bundle`; generates `Brewfile.local` from archetype + feature flags |
 | `run_onchange_25-install-curl-toolchains.sh` | Script content changes | Installs oh-my-zsh, powerlevel10k, zsh plugins, nvm + Node LTS, pnpm, maestro |
 | `run_onchange_30-install-cli-globals.sh.tmpl` | `cli-globals.txt` changes | Replays npm/pnpm/cargo/go/pip global packages |
 | `run_onchange_50-pull-ssh-keys.sh.tmpl` | SSH config template changes | Fetches SSH keys from Bitwarden; writes to `~/.ssh/` |
-| `run_onchange_60-apply-macos-defaults.sh.tmpl` | Defaults file changes | Applies ~35 `defaults write` keys across Dock, Finder, Keyboard, Trackpad, Screenshots, Safari |
+| `run_onchange_60-apply-macos-defaults.sh.tmpl` | Defaults file changes | Applies ~40 `defaults write` keys across Dock, Finder, Keyboard, Trackpad, Screenshots, Safari |
 | `run_onchange_70-apply-login-autostart.sh` | `login-items.txt` changes | Configures login items via `osascript`; loads custom LaunchAgents from `~/Library/LaunchAgents/` |
 
 ---
@@ -312,7 +312,7 @@ automatic reconciliation is Plan 3 work (see [ROADMAP.md](./ROADMAP.md)).
 | SSH keys via Bitwarden | ✅ shipped | Plan 1 |
 | `bootstrap.sh fork` (personalize for own account) | ✅ shipped | Plan 1 |
 | curl-toolchains (oh-my-zsh, p10k, nvm, pnpm, maestro) | ✅ shipped | Plan 1.5 |
-| macOS defaults baseline (~35 keys) | ✅ shipped | Plan 1.5 |
+| macOS defaults baseline (~40 keys) | ✅ shipped | Plan 1.5 |
 | `scan-macos` subcommand | ✅ shipped | Plan 1.5 |
 | `bootstrap.sh doctor` (8 checks) | ✅ shipped | Slice 1 |
 | `dot` CLI namespace (chezmoi-managed shim) | ✅ shipped | Slice 2a |
@@ -431,7 +431,7 @@ bats tests/
 Covers `dot doctor`, `dot apply --dry-run`, `dot snapshot`, `dot pull`, and feature-flag Brewfile
 templating; runs in a sandboxed fixture in `$TMPDIR`.
 
-**Adding a feature flag:** add to `chezmoi/chezmoi.toml.tmpl` under `[data.features]`; add a
+**Adding a feature flag:** add to `chezmoi/.chezmoi.toml.tmpl` under `[data.features]`; add a
 conditional block to `chezmoi/Brewfile.tmpl`; update the flags table in this README; add a bats test.
 
 **Updating canonical state:**
