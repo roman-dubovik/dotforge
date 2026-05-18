@@ -115,6 +115,18 @@ TOML
     [ "$status" -ne 0 ]
 }
 
+@test "state_get: returns 1 when file exists but key is missing" {
+    mkdir -p "$(dirname "$DOTFORGE_STATE_FILE")"
+    cat > "$DOTFORGE_STATE_FILE" <<'TOML'
+[features]
+docker_desktop = true
+TOML
+
+    run state_get features.nonexistent_feature
+    [ "$status" -eq 1 ]
+    [ -z "$output" ]
+}
+
 @test "state_get: returns value after state_set" {
     state_init
     state_set features.docker_desktop false

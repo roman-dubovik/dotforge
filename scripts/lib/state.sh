@@ -102,7 +102,7 @@ state_init() {
 # ── state_get ──
 # Usage: state_get features.FEATURE
 # Prints the value ("true" or "false") from state.toml.
-# Returns 1 if feature not found.
+# Returns 1 if state file is absent OR if key is missing from file.
 state_get() {
     local key="$1"
     # key format: "features.FEATURE"
@@ -114,7 +114,8 @@ state_get() {
     file="$(state_file)"
     [[ -f "$file" ]] || return 1
 
-    # Read only [features] section, extract matching key
+    # Read only [features] section, extract matching key.
+    # Exits awk with code 1 if key not found (found=0 in END).
     awk -v section="$section" -v feature="$feature" '
         /^\[/ { in_section = ($0 == "[" section "]") }
         in_section && /^[[:space:]]*[^#]/ {
@@ -122,9 +123,11 @@ state_get() {
                 val = substr($0, RSTART + RLENGTH)
                 gsub(/[[:space:]#].*$/, "", val)
                 print val
+                found = 1
                 exit
             }
         }
+        END { if (!found) exit 1 }
     ' "$file"
 }
 
