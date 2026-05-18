@@ -206,14 +206,12 @@ brew bundle (Brewfile + Brewfile.local)   Bitwarden CLI install
                                                               ▼
                                                   dot CLI → ~/.local/bin/dot
                                                               │
-                                         ┌────────────────────┼────────────────────┐
-                                         ▼                    ▼                    ▼
-                                    dot doctor           dot apply           dot snapshot
-                                    (8 checks)     (apply + delta)    (capture + commit)
-                                                              │
-                                                              ▼
-                                                         dot pull
-                                                  (fetch + ff + apply + doctor)
+              ┌─────────────────┬──────────────────┬──────────┴───────┬──────────────────┬──────────────────┐
+              ▼                 ▼                  ▼                  ▼                  ▼                  ▼
+        dot doctor      dot apply         dot snapshot       dot pull         dot status       dot features
+        (8 checks)    (apply + delta)   (capture+commit)  (--resolve=MODE)  (divergence rpt)  (list flags+src)
+                          │
+              --enable/--disable                       --resolve = abort | ours | theirs | interactive
 ```
 
 ---

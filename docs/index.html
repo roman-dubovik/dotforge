@@ -368,10 +368,12 @@
 
             <!-- dot sub-commands listed below -->
             <g font-family="'JetBrains Mono',monospace" font-size="10.5" fill="rgba(139,148,158,0.7)">
-              <text x="1000" y="262">dot doctor</text>
-              <text x="1000" y="278">dot apply</text>
-              <text x="1000" y="294">dot snapshot</text>
-              <text x="1000" y="310">dot pull</text>
+              <text x="1000" y="258">dot doctor</text>
+              <text x="1000" y="272">dot apply</text>
+              <text x="1000" y="286">dot snapshot</text>
+              <text x="1000" y="300">dot pull</text>
+              <text x="1000" y="314">dot status</text>
+              <text x="1000" y="328">dot features</text>
             </g>
           </svg>
         </div>
@@ -509,16 +511,24 @@
             <span class="cmd-desc">8 read-only sync checks, colorized output</span>
           </div>
           <div class="cmd-entry">
-            <span class="cmd-name">dot apply</span>
-            <span class="cmd-desc">chezmoi apply + before/after doctor delta. Supports --dry-run</span>
+            <span class="cmd-name">dot apply [--dry-run] [--enable=X] [--disable=Y]</span>
+            <span class="cmd-desc">chezmoi apply + before/after doctor delta. Toggle feature flags via --enable/--disable (CSV or repeated)</span>
           </div>
           <div class="cmd-entry">
             <span class="cmd-name">dot snapshot</span>
             <span class="cmd-desc">scan-cli + scan-login + scan-macos → commit to repo</span>
           </div>
           <div class="cmd-entry">
-            <span class="cmd-name">dot pull</span>
-            <span class="cmd-desc">fetch + ff-only merge + chezmoi apply + dot doctor (exit code propagated)</span>
+            <span class="cmd-name">dot pull [--resolve=MODE]</span>
+            <span class="cmd-desc">fetch + merge + chezmoi apply + dot doctor. MODE = abort (default, ff-only) | ours | theirs | interactive</span>
+          </div>
+          <div class="cmd-entry">
+            <span class="cmd-name">dot status [--fetch]</span>
+            <span class="cmd-desc">Read-only divergence report: ahead/behind, working tree, scanner outputs, doctor summary</span>
+          </div>
+          <div class="cmd-entry">
+            <span class="cmd-name">dot features</span>
+            <span class="cmd-desc">List all six feature flags with value, source (state.toml / chezmoi.toml / default), and sync status</span>
           </div>
           <div class="cmd-entry">
             <span class="cmd-name">dot version / dot help</span>
@@ -566,6 +576,14 @@
                 <span class="status-dot status-shipped" aria-label="Shipped"></span>
                 <span><strong>Slice 2d — Feature flags</strong> · 6 flags + scan-macos capture + bats tests</span>
               </li>
+              <li>
+                <span class="status-dot status-shipped" aria-label="Shipped"></span>
+                <span><strong>Slice 2e — Programmatic toggles</strong> · <code>dot apply --enable/--disable</code>, <code>dot features</code>, state.toml as single source of truth</span>
+              </li>
+              <li>
+                <span class="status-dot status-shipped" aria-label="Shipped"></span>
+                <span><strong>Plan 3 MVP — Multi-machine reconciliation</strong> · <code>dot status</code> + <code>dot pull --resolve=ours/theirs/interactive/abort</code></span>
+              </li>
             </ul>
           </div>
 
@@ -574,11 +592,7 @@
             <ul class="roadmap-items">
               <li>
                 <span class="status-dot status-next" aria-label="Next priority"></span>
-                <span><strong>Slice 2e</strong> · Programmatic <code>dot apply --enable=X --disable=Y</code>, <code>local_llm</code> flag, persisted bootstrap menu</span>
-              </li>
-              <li>
-                <span class="status-dot status-next" aria-label="Next priority"></span>
-                <span><strong>Plan 3 — Multi-machine sync</strong> · Active reconciliation between Macs, conflict detection</span>
+                <span><strong>Plan 3b — Full three-way merge</strong> · Auto-merge divergent scanner outputs against the common ancestor, beyond the ours/theirs strategy</span>
               </li>
               <li>
                 <span class="status-dot status-next" aria-label="Next priority"></span>
