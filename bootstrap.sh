@@ -230,7 +230,7 @@ cmd_customize() {
     local feature_args=()
 
     # Feature names and their defaults (bash 3.2 compat: parallel indexed arrays, no -A).
-    # Order must be consistent across all three arrays.
+    # Order must match between features and defaults (parallel indexed arrays).
     local features=(docker_desktop ai_assistants vpn_suite office_suite media_tools design_tools)
     local defaults=(true         true          true      false        true         true)
 

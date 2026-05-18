@@ -31,7 +31,7 @@ Usage:
   dot features --help|-h   Print this help.
 
 Sources:
-  state.toml   — value comes from ~/.config/dotforge/state.toml (set via dot apply)
+  state.toml   — value comes from ~/.config/dotforge/state.toml (set via `dot apply --enable/--disable` or `bootstrap.sh customize`)
   chezmoi.toml — value comes from ~/.config/chezmoi/chezmoi.toml only
   default      — no persistent state; showing compiled-in default
 

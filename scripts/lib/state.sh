@@ -83,7 +83,7 @@ state_init() {
     {
         printf "# ~/.config/dotforge/state.toml\n"
         printf "# Managed by \`dot apply --enable=...\` and \`bootstrap.sh customize\`.\n"
-        printf "# Manual edits to feature values will be overwritten; comments and other keys are preserved.\n"
+        printf "# Manual edits to feature values will be overwritten by \`dot apply --enable/--disable\`; comments and other keys are preserved.\n"
         printf "[features]\n"
         local i
         for i in "${!DOTFORGE_FEATURES[@]}"; do
@@ -133,7 +133,7 @@ state_get() {
 
 # ── state_set ──
 # Usage: state_set features.FEATURE VALUE
-# Atomically updates a single key in state.toml. All other keys and sections preserved.
+# Atomically updates a single key in state.toml (tmp+mv). All other keys and sections preserved.
 # If the key is absent from [features], it is appended inside the section.
 # Ensures file exists first (calls state_init).
 state_set() {
