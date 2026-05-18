@@ -254,3 +254,99 @@ DOCTOR
     run bash "$SCRIPT"
     [[ "$output" == *"origin/main"* ]]
 }
+
+# ── FIX 9 (e): --fetch invokes chezmoi fetch (sentinel-file test) ──
+
+@test "dot status --fetch: invokes chezmoi git fetch" {
+    SENTINEL="$BATS_TEST_TMPDIR/fetch-was-called"
+    cat > "$BATS_TEST_TMPDIR/mocks/chezmoi" <<MOCK
+#!/usr/bin/env bash
+if [[ "\${2:-}" == "--" && "\${3:-}" == "fetch" ]]; then
+    touch "$SENTINEL"
+    # Execute the actual fetch so counts remain valid
+    shift; shift
+    exec git -C "$CHEZMOI_REPO" "\$@"
+fi
+if [[ "\${1:-}" == "source-path" ]]; then printf "%s\n" "$CHEZMOI_REPO"; fi
+exit 0
+MOCK
+    chmod +x "$BATS_TEST_TMPDIR/mocks/chezmoi"
+
+    run bash "$SCRIPT" --fetch
+    [ -f "$SENTINEL" ]
+}
+
+# ── FIX 9 (f): uncommitted scanner outputs lists the branch ──
+
+@test "dot status: uncommitted scanner file is reported" {
+    # REPO_ROOT is hardcoded in the script as two levels up from scripts/dot-status.sh.
+    # To test the scanner-output path we need the file to live under that real REPO_ROOT.
+    # We use a wrapper script that first cd's into a temp dir and adjusts PATH so that
+    # REPO_ROOT computation is stable, then creates the scanner file and invokes dot-status.
+    #
+    # Simplest approach: create a thin wrapper that overrides REPO_ROOT via the argument
+    # that SCRIPT_DIR derives from BASH_SOURCE[0].  We copy the script to a path where
+    # two levels up is our CHEZMOI_REPO.
+
+    # Arrange directory layout: FAKE_DOTFORGE/scripts/dot-status.sh
+    #   so that REPO_ROOT = FAKE_DOTFORGE
+    FAKE_DOTFORGE="$BATS_TEST_TMPDIR/fake-dotforge"
+    mkdir -p "$FAKE_DOTFORGE/scripts/lib"
+    cp "$SCRIPT" "$FAKE_DOTFORGE/scripts/dot-status.sh"
+    # Copy lib/ dependencies
+    cp /Users/romandubovik/Documents/Projects/dotforge/scripts/lib/git-state.sh \
+       "$FAKE_DOTFORGE/scripts/lib/git-state.sh"
+    # Create a lib/log.sh stub in the fake dotforge root
+    mkdir -p "$FAKE_DOTFORGE/lib"
+    cat > "$FAKE_DOTFORGE/lib/log.sh" <<'LOG'
+#!/usr/bin/env bash
+log_info()    { printf "→ %s\n" "$*"; }
+log_warn()    { printf "! %s\n" "$*" >&2; }
+log_section() { printf "\n── %s ──\n" "$*"; }
+LOG
+
+    # Create a scanner file tracked by CHEZMOI_REPO (used as the git repo for status checks)
+    SCANNER_FILE="$CHEZMOI_REPO/cli-globals.txt"
+    printf "initial\n" > "$SCANNER_FILE"
+    git -C "$CHEZMOI_REPO" add cli-globals.txt
+    git -C "$CHEZMOI_REPO" commit -m "add scanner file" >/dev/null 2>&1
+    git -C "$CHEZMOI_REPO" push origin main >/dev/null 2>&1
+    git -C "$CHEZMOI_REPO" fetch origin >/dev/null 2>&1
+
+    # Modify it without committing
+    printf "modified\n" >> "$SCANNER_FILE"
+
+    # Build a DOTFORGE_SCANNER_FILES path that starts with FAKE_DOTFORGE so the strip works.
+    # The script does: rel="${sf#"${REPO_ROOT}"/}"
+    # We need sf to begin with FAKE_DOTFORGE.
+    # But the actual file lives in CHEZMOI_REPO.  Create a symlink inside FAKE_DOTFORGE:
+    mkdir -p "$FAKE_DOTFORGE/scanner-data"
+    ln -sf "$SCANNER_FILE" "$FAKE_DOTFORGE/cli-globals.txt"
+
+    # git -C "$FAKE_DOTFORGE" needs to know about this file.
+    # Re-use CHEZMOI_REPO as the underlying git repo by symlinking .git:
+    ln -sf "$CHEZMOI_REPO/.git" "$FAKE_DOTFORGE/.git"
+
+    run bash "$FAKE_DOTFORGE/scripts/dot-status.sh" \
+        2>&1 <<< ""
+    # We don't assert exit status here because other divergences may be present.
+    # What we assert: the scanner section mentions cli-globals.txt.
+    [[ "$output" == *"cli-globals.txt"* ]]
+}
+
+# ── FIX 9 (g): doctor crash → ERROR line + DIVERGED=1 + exit 1 ──
+
+@test "dot status: doctor crash with no output exits 1 with ERROR line" {
+    cat > "$BATS_TEST_TMPDIR/mock-doctor.sh" <<'DOCTOR'
+#!/usr/bin/env bash
+# No parseable output; just exit non-zero
+exit 42
+DOCTOR
+    chmod +x "$BATS_TEST_TMPDIR/mock-doctor.sh"
+    export DOTFORGE_DOCTOR_SCRIPT="$BATS_TEST_TMPDIR/mock-doctor.sh"
+
+    run bash "$SCRIPT"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"ERROR"* ]]
+    [[ "$output" == *"42"* ]]
+}

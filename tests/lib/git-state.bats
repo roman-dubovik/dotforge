@@ -205,3 +205,26 @@ setup() {
 
     [[ "$(cat "$WORK_DIR/rt.txt")" == "branch two" ]]
 }
+
+# ── FIX 9 (h): git_stash_save with untracked-only dirty tree ──
+
+@test "git_stash_save: includes untracked-only file (via -u flag)" {
+    # Only an untracked file — no staged or modified tracked files.
+    printf "new untracked\n" > "$WORK_DIR/untracked-only.txt"
+
+    # Confirm is_dirty sees it
+    run git_is_dirty "$WORK_DIR"
+    [ "$status" -eq 0 ]
+
+    # Stash should succeed (return stash ref)
+    run git_stash_save "$WORK_DIR" "untracked-only stash"
+    [ "$status" -eq 0 ]
+    [[ "$output" == "stash@{0}" ]]
+
+    # Working tree should be clean after stash
+    run git_is_dirty "$WORK_DIR"
+    [ "$status" -eq 1 ]
+
+    # Untracked file should be gone from working tree
+    [ ! -f "$WORK_DIR/untracked-only.txt" ]
+}
