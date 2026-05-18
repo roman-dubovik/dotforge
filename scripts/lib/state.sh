@@ -130,7 +130,8 @@ state_get() {
 
 # ── state_set ──
 # Usage: state_set features.FEATURE VALUE
-# Atomically rewrites [features] section of state.toml.
+# Atomically updates a single key in state.toml. All other keys and sections preserved.
+# If the key is absent from [features], it is appended inside the section.
 # Ensures file exists first (calls state_init).
 state_set() {
     local key="$1" value="$2"
@@ -144,7 +145,7 @@ state_set() {
     local tmp
     tmp="${file}.tmp.$$"
 
-    # Rewrite: copy everything outside [features], rebuild [features] with new value.
+    # Rewrite: update existing key or pass through all lines unchanged.
     awk -v feature="$feature" -v newval="$value" '
         /^\[features\]/ {
             in_features = 1
@@ -152,6 +153,11 @@ state_set() {
             next
         }
         /^\[/ && !/^\[features\]/ {
+            if (in_features && !found) {
+                # Key was not found in [features]; append before next section.
+                printf "%s = %s\n", feature, newval
+                found = 1
+            }
             in_features = 0
         }
         in_features && /^[[:space:]]*[^#[[:space:]]/ {
@@ -161,12 +167,17 @@ state_set() {
             gsub(/[[:space:]]/, "", k)
             if (k == feature) {
                 printf "%s = %s\n", feature, newval
-            } else {
-                print
+                found = 1
+                next
             }
-            next
         }
         { print }
+        END {
+            if (in_features && !found) {
+                # [features] was the last section and key was missing; append now.
+                printf "%s = %s\n", feature, newval
+            }
+        }
     ' "$file" > "$tmp"
 
     mv "$tmp" "$file"

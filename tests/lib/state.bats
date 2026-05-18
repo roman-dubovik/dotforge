@@ -170,6 +170,26 @@ TOML
     grep -q "^\[features\]" "$DOTFORGE_STATE_FILE"
 }
 
+@test "state_set: appends missing key inside [features] section" {
+    # Create state.toml with only one feature in [features]
+    mkdir -p "$(dirname "$DOTFORGE_STATE_FILE")"
+    cat > "$DOTFORGE_STATE_FILE" <<'TOML'
+# state.toml
+[features]
+docker_desktop = true
+TOML
+
+    state_set features.office_suite true
+
+    # Both keys must be present
+    run grep "docker_desktop" "$DOTFORGE_STATE_FILE"
+    [[ "$output" == *"true"* ]]
+
+    run state_get features.office_suite
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+}
+
 @test "state_set: atomic write — tmp file cleaned up on success" {
     state_init
     state_set features.vpn_suite false
