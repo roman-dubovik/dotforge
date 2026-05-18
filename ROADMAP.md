@@ -17,9 +17,9 @@ dotforge is a chezmoi-powered macOS bootstrap framework with CLI automation. Sta
 - **macOS defaults baseline** — system settings applier via `defaults write`.
 - **`bootstrap.sh fork`** — personalize-for-own-account flow.
 
-### The `dot` namespace (2026-05-14)
+### The `dot` namespace (2026-05-07)
 
-- **`dot doctor`** — read-only sync check: 8 diagnostics (Xcode CLT, brew, chezmoi state, SSH keys, login items, Brewfile, macOS defaults, dotfiles perms).
+- **`dot doctor`** — read-only sync check: 8 diagnostics (`chezmoi`, `brewfile`, `cli-globals`, `curl-toolchains`, `ssh-keys`, `macos-defaults`, `login-autostart`, `repo`).
 - **`dot` CLI shim** — chezmoi-managed executable in `~/.local/bin/dot`, routes subcommands to shell functions.
 - **Command stubs** — `help`, `version`.
 
@@ -27,8 +27,8 @@ dotforge is a chezmoi-powered macOS bootstrap framework with CLI automation. Sta
 
 - **`dot apply`** — chezmoi apply + before/after doctor delta, `--dry-run` mode, idempotent re-runs.
 - **`dot snapshot`** — scan-cli + scan-login + scan-macos capture → auto-commit to git (with diffs).
-- **`dot pull`** — fetch + ff-only + apply + strict doctor (fails fast if out of sync).
-- **Six feature flags** — `docker_desktop`, `ai_assistants`, `vpn_suite`, `office_suite`, `media_tools`, `design_tools` (via `chezmoi.toml.tmpl` `[data.features]`).
+- **`dot pull`** — fetch + ff-only + `chezmoi apply` + `dot doctor` (exit code propagated; no before/after delta — use `dot apply` for that).
+- **Six feature flags** — `docker_desktop`, `ai_assistants`, `vpn_suite`, `office_suite`, `media_tools`, `design_tools` (via `chezmoi/.chezmoi.toml.tmpl` `[data.features]`).
 - **Full macOS capture** — `scan-macos-defaults.sh --capture` persists to `chezmoi/dot_config/dotforge/macos-defaults.txt`; `chezmoi apply` rehydrates.
 - **bats test suite** — feature-flag toggles, scanner output validation, apply/pull/doctor semantics.
 
