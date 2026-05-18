@@ -271,7 +271,7 @@ script runs once per machine lifetime.
 | `run_onchange_25-install-curl-toolchains.sh` | Script content changes | Installs oh-my-zsh, powerlevel10k, zsh plugins, nvm + Node LTS, pnpm, maestro |
 | `run_onchange_30-install-cli-globals.sh.tmpl` | `cli-globals.txt` changes | Replays npm/pnpm/cargo/go/pip global packages |
 | `run_onchange_50-pull-ssh-keys.sh.tmpl` | SSH config template changes | Fetches SSH keys from Bitwarden; writes to `~/.ssh/` |
-| `run_onchange_60-apply-macos-defaults.sh` | Defaults file changes | Applies ~35 `defaults write` keys across Dock, Finder, Keyboard, Trackpad, Screenshots, Safari |
+| `run_onchange_60-apply-macos-defaults.sh.tmpl` | Defaults file changes | Applies ~35 `defaults write` keys across Dock, Finder, Keyboard, Trackpad, Screenshots, Safari |
 | `run_onchange_70-apply-login-autostart.sh` | `login-items.txt` changes | Configures login items via `osascript`; loads custom LaunchAgents from `~/Library/LaunchAgents/` |
 
 ---
