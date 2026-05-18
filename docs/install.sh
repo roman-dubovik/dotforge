@@ -67,8 +67,10 @@ if ! command -v brew >/dev/null 2>&1; then
     info "Homebrew not found — installing (non-interactive)..."
     _brew_installer=$(mktemp -t dotforge-brew-install.XXXXXX)
     trap 'rm -f "$_brew_installer"' EXIT
-    if ! curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$_brew_installer"; then
-        err "Failed to download Homebrew installer (curl exit $?). Check network/proxy and retry."
+    _curl_rc=0
+    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$_brew_installer" || _curl_rc=$?
+    if [ "$_curl_rc" -ne 0 ]; then
+        err "Failed to download Homebrew installer (curl exit $_curl_rc). Check network/proxy and retry."
     fi
     NONINTERACTIVE=1 /bin/bash "$_brew_installer"
     rm -f "$_brew_installer"
