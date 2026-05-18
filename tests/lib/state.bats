@@ -406,7 +406,9 @@ TOML
 # ── _persist_feature_args (bootstrap.sh helper; tests via state.sh sourced in setup) ──
 
 # Define the helper here for unit-testing; in bootstrap.sh it is defined inline.
+# Mirrors production _persist_feature_args after the set -e fix.
 # shellcheck disable=SC2317
+DOTFORGE_PERSIST_SYNCED=0
 _persist_feature_args_testable() {
     local a
     for a in "$@"; do
@@ -415,7 +417,11 @@ _persist_feature_args_testable() {
             --disable=*) state_set "features.${a#--disable=}" false ;;
         esac
     done
-    chezmoi_toml_sync
+    if chezmoi_toml_sync; then
+        DOTFORGE_PERSIST_SYNCED=1
+    else
+        DOTFORGE_PERSIST_SYNCED=0
+    fi
 }
 
 @test "_persist_feature_args: writes state.toml and syncs chezmoi.toml" {
@@ -442,4 +448,13 @@ TOML
     [[ "$output" == *"true"* ]]
     run grep "docker_desktop" "$DOTFORGE_CHEZMOI_TOML"
     [[ "$output" == *"false"* ]]
+}
+
+@test "_persist_feature_args: succeeds when chezmoi.toml is absent (no set -e abort)" {
+    # do NOT pre-create chezmoi.toml
+    run _persist_feature_args_testable --enable=docker_desktop
+    [ "$status" -eq 0 ]
+    # state.toml updated
+    run state_get features.docker_desktop
+    [ "$output" = "true" ]
 }

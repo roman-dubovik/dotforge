@@ -319,7 +319,11 @@ cmd_customize() {
     # Persist feature selections to state.toml and sync to chezmoi.toml.
     if [[ "$state_loaded" -eq 1 && "${#feature_args[@]}" -gt 0 ]]; then
         _persist_feature_args "${feature_args[@]}"
-        say "Feature selections saved to state.toml and synced to chezmoi.toml."
+        if [[ "$DOTFORGE_PERSIST_SYNCED" -eq 1 ]]; then
+            say "Feature selections saved to state.toml and synced to chezmoi.toml."
+        else
+            say "Feature selections saved to state.toml; chezmoi.toml sync skipped (file absent)."
+        fi
     elif [[ "$state_loaded" -eq 0 && "${#feature_args[@]}" -gt 0 ]]; then
         ok "WARN: state.sh not found; feature selections will not be persisted to state.toml"
     fi
@@ -331,7 +335,9 @@ cmd_customize() {
 # ── _persist_feature_args ──
 # Usage: _persist_feature_args [--enable=FEATURE...] [--disable=FEATURE...]
 # Writes each flag to state.toml via state_set, then calls chezmoi_toml_sync.
+# Sets DOTFORGE_PERSIST_SYNCED=1 when chezmoi.toml was synced, 0 when absent.
 # Requires state.sh already sourced (state_set and chezmoi_toml_sync available).
+DOTFORGE_PERSIST_SYNCED=0
 _persist_feature_args() {
     local a
     for a in "$@"; do
@@ -340,7 +346,11 @@ _persist_feature_args() {
             --disable=*) state_set "features.${a#--disable=}" false ;;
         esac
     done
-    chezmoi_toml_sync
+    if chezmoi_toml_sync; then
+        DOTFORGE_PERSIST_SYNCED=1
+    else
+        DOTFORGE_PERSIST_SYNCED=0
+    fi
 }
 
 # ── Subcommand: add-key ──
