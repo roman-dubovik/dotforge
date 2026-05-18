@@ -451,9 +451,15 @@ TOML
 }
 
 @test "_persist_feature_args: succeeds when chezmoi.toml is absent (no set -e abort)" {
-    # do NOT pre-create chezmoi.toml
-    run _persist_feature_args_testable --enable=docker_desktop
-    [ "$status" -eq 0 ]
+    # do NOT pre-create chezmoi.toml.
+    # Use a `set -euo pipefail` subshell so the assertion actually catches
+    # the regression class — bats `run` disables set -e and would pass even
+    # with the old bare-call bug.
+    (
+        set -euo pipefail
+        _persist_feature_args_testable --enable=docker_desktop
+    )
+    [ "$?" -eq 0 ]
     # state.toml updated
     run state_get features.docker_desktop
     [ "$output" = "true" ]
