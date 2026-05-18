@@ -246,7 +246,7 @@ _restore_stash() {
 # This avoids the git "diverging branches, can't fast-forward" abort on modern git.
 log_info "Pulling origin/${BRANCH}…"
 PULL_RC=0
-chezmoi git -- pull --no-ff origin "$BRANCH" >/dev/null 2>&1 || PULL_RC=$?
+pull_out="$(chezmoi git -- pull --no-ff origin "$BRANCH" 2>&1)" || PULL_RC=$?
 
 if [[ "$PULL_RC" -ne 0 ]]; then
     # Check if there are actual conflicts to resolve
@@ -267,7 +267,7 @@ if [[ "$PULL_RC" -ne 0 ]]; then
         fi
         log_ok "Merge committed."
     else
-        log_error "[dot pull] pull failed (non-fast-forward or network error)"
+        log_error "[dot pull] pull failed (non-fast-forward or network error): ${pull_out}"
         _restore_stash
         exit 1
     fi
