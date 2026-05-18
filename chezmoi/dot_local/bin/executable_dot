@@ -8,6 +8,7 @@
 #   dot apply [OPTIONS]    # apply chezmoi dotfiles with delta
 #   dot snapshot [OPTIONS] # capture machine state + git commit
 #   dot pull [OPTIONS]     # sync from origin, apply, doctor
+#   dot status [OPTIONS]   # non-destructive divergence report
 #   dot features           # list feature flags with values and sources
 #   dot setup [OPTIONS]    # bootstrap dotforge (= bootstrap.sh setup)
 #   dot version            # print version and branch
@@ -46,6 +47,10 @@ case "$SUBCOMMAND" in
         shift || true
         exec bash "$REPO_ROOT/scripts/dot-pull.sh" "$@"
         ;;
+    status)
+        shift || true
+        exec bash "$REPO_ROOT/scripts/dot-status.sh" "$@"
+        ;;
     features)
         shift || true
         exec bash "$REPO_ROOT/scripts/dot-features.sh" "$@"
@@ -72,6 +77,7 @@ Subcommands:
   apply [OPTIONS]               apply chezmoi dotfiles with before/after doctor delta
   snapshot [OPTIONS]            capture current machine state to canonical files + git commit
   pull [OPTIONS]                sync from origin: git pull --ff-only, chezmoi apply, doctor
+  status [OPTIONS]              non-destructive divergence report (ahead/behind, dirty, scanner outputs, doctor)
   features                      list feature flags with current values and sources
   setup [OPTIONS]               bootstrap dotforge (alias for bootstrap.sh setup)
   version                        print version and branch
