@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Plan 3 MVP — multi-machine reconciliation (detect + manual resolve)**
+- `dot status [--fetch]` — non-destructive divergence report: ahead/behind count vs `origin/<branch>`,
+  working tree cleanliness, uncommitted scanner output files, and `dot doctor` summary (PASS/WARN/FAIL).
+  Exit 0 = in-sync, exit 1 = any divergence.  `--fetch` opt-in for offline-safe default.
+- `dot pull --resolve=ours|theirs|interactive|abort` — four resolve modes:
+  - `abort` (default) — fast-forward only, identical to previous behaviour
+  - `ours` — stash → pull --no-ff → `git checkout --ours` on conflicts → stash pop
+  - `theirs` — stash → pull --no-ff → `git checkout --theirs` on conflicts → stash pop
+  - `interactive` — stash → pull --no-ff → prompt per conflicted file (gum on tty, `read` fallback)
+  - On any failure: stash restored, explicit "stash restored, resolve manually" message
+- `scripts/lib/git-state.sh` — pure git helpers (ahead/behind counts, stash save/pop, conflict
+  detection, file resolution); all take explicit `GIT_DIR` arg for testability
+- `scripts/dot-status.sh` — implementation of `dot status` subcommand
+- `DOTFORGE_DOCTOR_SCRIPT` and `DOTFORGE_CHEZMOI_REPO` env overrides for CI / bats mocking
+- bats tests: `tests/lib/git-state.bats` (16 tests), `tests/scripts/dot-pull-resolve.bats`
+  (19 tests), `tests/scripts/dot-status.bats` (22 tests)
+
 - **Slice 2e — programmatic feature toggles**
 - `dot apply --enable=FEATURE` / `--disable=FEATURE` — toggle feature flags from the CLI; supports
   comma-separated CSV (`--disable=office_suite,media_tools`) and repeated flags; validates names

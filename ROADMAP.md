@@ -46,9 +46,15 @@ dotforge is a chezmoi-powered macOS bootstrap framework with CLI automation. Sta
 
 ~~Enable / disable features from command line: `dot apply --enable=docker_desktop --disable=office_suite`. Persist menu state across runs (bootstrap.sh customize answers stored in chezmoi.toml). Removes manual edit of feature sections in prompts.~~
 
-### 🟡 2. Plan 3 — Multi-machine reconciliation
+### ~~🟢 2. Plan 3 MVP — Multi-machine reconciliation~~ ✅ Shipped 2026-05-18
 
-Active sync with conflict resolution: when two machines diverge (one installs a new app, the other upgrades brew), `dot pull` on the second machine detects the delta and merges intelligently. Currently sync is git-mediated (push `dot snapshot`, pull on other machine) — no active three-way merge.
+~~Active sync with conflict resolution: when two machines diverge (one installs a new app, the other upgrades brew), `dot pull` on the second machine detects the delta and merges intelligently. Currently sync is git-mediated (push `dot snapshot`, pull on other machine) — no active three-way merge.~~
+
+**Shipped:** `dot status` (non-destructive divergence report) + `dot pull --resolve=ours|theirs|interactive|abort` (stash-merge-pop conflict resolution). Three-way merge is the next step (see below).
+
+### 🟡 2b. Plan 3 — Full three-way merge
+
+Polished three-way merge for scanner output files: instead of `--ours`/`--theirs`, diff both sides against the common ancestor and produce a merged result automatically. Required for the case where two machines both add different new items to `cli-globals.txt` without any shared lines conflicting.
 
 ### 🟡 3. App-specific configs
 
@@ -71,7 +77,7 @@ Capture browser autofill profiles, email accounts, and app authentication tokens
 - **macOS-only.** Requires Darwin kernel, zsh/bash, curl, brew, git, chezmoi, Bitwarden CLI.
 - **Requires Bitwarden.** SSH keys are retrieved at runtime via `bw get`. No fallback to 1Password, Dashlane, or plain-text files.
 - **Requires Homebrew.** All package management goes through `brew` and `brew bundle`. GNU/Linux package managers not supported.
-- **Git-mediated sync only.** No active multi-machine reconciliation yet (Plan 3). If two machines both run `dot snapshot`, pushing both to the same branch requires manual merge.
+- **Conflict resolution is strategy-based, not three-way.** `dot pull --resolve=ours/theirs` picks a side; full three-way merge (Plan 3b) is not yet implemented. `dot status` helps detect divergence before pulling.
 - **Some apps require manual restore.** IDE settings, Hammerspoon config, browser extensions — each has its own backup strategy. dotforge covers shell config, system defaults, Brewfile, login items, and SSH keys; beyond that, user must export / restore app-specifically or rely on iCloud / cloud-sync where available.
 - **Apple sandboxing blocks certain captures.** Safari keychain, Mail accounts, and system credentials in Keychain are not shell-accessible without full-disk-access entitlements (and even then, Keychain APIs require Objective-C). Bitwarden is the workaround.
 
