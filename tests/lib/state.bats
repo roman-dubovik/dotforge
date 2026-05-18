@@ -314,3 +314,47 @@ TOML
 
     [ -f "${DOTFORGE_CHEZMOI_TOML}.bak" ]
 }
+
+@test "chezmoi_toml_sync: preserves unknown keys in [data.features]" {
+    state_init
+    state_set features.docker_desktop true
+
+    mkdir -p "$(dirname "$DOTFORGE_CHEZMOI_TOML")"
+    cat > "$DOTFORGE_CHEZMOI_TOML" <<'TOML'
+[data]
+    machine_name = "test-box"
+
+[data.features]
+    docker_desktop = false
+    custom_experimental = true
+TOML
+
+    chezmoi_toml_sync
+
+    # docker_desktop should be updated to true
+    run grep "docker_desktop" "$DOTFORGE_CHEZMOI_TOML"
+    [[ "$output" == *"true"* ]]
+
+    # custom_experimental should still be present and unchanged
+    run grep "custom_experimental" "$DOTFORGE_CHEZMOI_TOML"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"true"* ]]
+}
+
+@test "chezmoi_toml_sync: uses timestamped .bak when .bak already exists" {
+    state_init
+    mkdir -p "$(dirname "$DOTFORGE_CHEZMOI_TOML")"
+    printf "[data.features]\n    docker_desktop = true\n" > "$DOTFORGE_CHEZMOI_TOML"
+    # Pre-create the .bak file
+    printf "old backup\n" > "${DOTFORGE_CHEZMOI_TOML}.bak"
+
+    chezmoi_toml_sync
+
+    # Original .bak must be untouched
+    [ "$(cat "${DOTFORGE_CHEZMOI_TOML}.bak")" = "old backup" ]
+
+    # A timestamped .bak must exist
+    local ts_bak
+    ts_bak="$(ls "${DOTFORGE_CHEZMOI_TOML}.bak."* 2>/dev/null | head -1)"
+    [ -n "$ts_bak" ]
+}

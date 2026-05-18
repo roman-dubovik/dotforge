@@ -214,40 +214,92 @@ state_list_features() {
 }
 
 # ── chezmoi_toml_sync ──
-# Rewrites [data.features] section in ~/.config/chezmoi/chezmoi.toml
-# using current values from state.toml.
-# Creates a backup at <file>.bak before rewriting.
+# Updates known feature keys in [data.features] of ~/.config/chezmoi/chezmoi.toml
+# using current values from state.toml.  Unknown keys inside [data.features] and
+# all other sections are left untouched.
+# Creates a backup at <file>.bak; if .bak already exists, uses <file>.bak.<timestamp>.
 chezmoi_toml_sync() {
     local chezmoi_file
     chezmoi_file="$(chezmoi_toml_file)"
     [[ -f "$chezmoi_file" ]] || return 0   # nothing to sync if chezmoi.toml absent
 
-    # Build the new [data.features] block from state.toml values.
-    local new_block
-    new_block="$(
-        printf "[data.features]\n"
-        local i f v
-        for i in "${!DOTFORGE_FEATURES[@]}"; do
-            f="${DOTFORGE_FEATURES[$i]}"
-            v="$(state_get "features.${f}" 2>/dev/null || printf "%s" "${DOTFORGE_FEATURE_DEFAULTS[$i]}")"
-            printf "    %s = %s\n" "$f" "$v"
-        done
-    )"
+    # Read current feature values from state.toml (fall back to defaults).
+    # Build a pipe-delimited lookup string: "feat1=val1|feat2=val2|..."
+    local i f v
+    local lookup=""
+    for i in "${!DOTFORGE_FEATURES[@]}"; do
+        f="${DOTFORGE_FEATURES[$i]}"
+        v="$(state_get "features.${f}" 2>/dev/null || printf "%s" "${DOTFORGE_FEATURE_DEFAULTS[$i]}")"
+        [[ -n "$lookup" ]] && lookup="${lookup}|"
+        lookup="${lookup}${f}=${v}"
+    done
 
     local tmp bak
     tmp="${chezmoi_file}.tmp.$$"
     bak="${chezmoi_file}.bak"
+    [[ -e "$bak" ]] && bak="${chezmoi_file}.bak.$(date +%s)"
 
-    # Strategy: copy everything except the [data.features] section; append new block.
-    # awk: skip lines from "[data.features]" until next "[" section header (exclusive).
-    awk '
-        /^\[data\.features\]/ { skip = 1; next }
-        skip && /^\[/ { skip = 0 }
-        !skip { print }
+    # Strategy: walk the file line by line.
+    # Inside [data.features], replace known-feature values in-place; pass through all
+    # other lines (including unknown keys) unchanged.
+    # If [data.features] is absent, append it at EOF.
+    awk -v lookup="$lookup" '
+        BEGIN {
+            # Parse "feat1=val1|feat2=val2|..." into feats[feat] = val
+            n = split(lookup, pairs, "|")
+            for (j = 1; j <= n; j++) {
+                eq = index(pairs[j], "=")
+                if (eq > 0) {
+                    k = substr(pairs[j], 1, eq - 1)
+                    v = substr(pairs[j], eq + 1)
+                    feats[k] = v
+                }
+            }
+            found_section = 0
+            in_df = 0
+        }
+        /^\[data\.features\]/ {
+            in_df = 1
+            found_section = 1
+            print
+            next
+        }
+        /^\[/ && in_df {
+            in_df = 0
+        }
+        in_df && /^[[:space:]]*[^#[:space:]]/ {
+            # Parse key from "  key = value" line
+            eq = index($0, "=")
+            if (eq > 0) {
+                k = substr($0, 1, eq - 1)
+                gsub(/[[:space:]]/, "", k)
+                if (k in feats) {
+                    # Replace with canonical indented value
+                    printf "    %s = %s\n", k, feats[k]
+                    next
+                }
+            }
+            # Unknown key — pass through unchanged
+            print
+            next
+        }
+        { print }
+        END {
+            if (!found_section) {
+                # Append [data.features] section
+                printf "\n[data.features]\n"
+                n = split(lookup, pairs, "|")
+                for (j = 1; j <= n; j++) {
+                    eq = index(pairs[j], "=")
+                    if (eq > 0) {
+                        k = substr(pairs[j], 1, eq - 1)
+                        v = substr(pairs[j], eq + 1)
+                        printf "    %s = %s\n", k, v
+                    }
+                }
+            }
+        }
     ' "$chezmoi_file" > "$tmp"
-
-    # Append new block
-    printf "\n%s\n" "$new_block" >> "$tmp"
 
     # Backup then replace
     cp "$chezmoi_file" "$bak"
