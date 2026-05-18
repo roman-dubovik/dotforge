@@ -217,13 +217,13 @@
     <section class="section section-flow" id="how" aria-labelledby="how-title">
       <div class="container">
         <p class="section-eyebrow">How it works</p>
-        <h2 id="how-title" class="section-title">One entry point. Seven automated hooks.</h2>
+        <h2 id="how-title" class="section-title">One entry point. Seven hooks (6 run_onchange + 1 run_once_before).</h2>
         <p class="section-lead">
           <code>bootstrap.sh setup</code> orchestrates everything — Xcode CLT, brew, chezmoi init, interactive prompts — then fires <code>chezmoi apply</code>,
-          which runs 7 <code>run_onchange</code> hooks in sequence. After that, the <code>dot</code> CLI lives at <code>~/.local/bin/dot</code> for day-to-day operations.
+          which runs 6 <code>run_onchange</code> hooks plus 1 <code>run_once_before</code> hook. After that, the <code>dot</code> CLI lives at <code>~/.local/bin/dot</code> for day-to-day operations.
         </p>
 
-        <div class="flow-stage reveal" role="img" aria-label="Flow diagram: bootstrap.sh setup feeds into chezmoi apply which triggers 7 hooks in sequence, outputting the dot CLI">
+        <div class="flow-stage reveal" role="img" aria-label="Flow diagram: bootstrap.sh setup feeds into chezmoi apply which triggers 7 hooks (6 run_onchange + 1 run_once_before) in sequence, outputting the dot CLI">
           <svg class="flow-svg" viewBox="0 0 1100 420" preserveAspectRatio="xMidYMid meet">
             <defs>
               <linearGradient id="flowGradIn" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -403,7 +403,7 @@
         <div class="install-block reveal" style="transition-delay:80ms;">
           <p class="install-label">Git clone fallback</p>
           <div class="code-row">
-            <code>git clone https://github.com/roman-dubovik/dotforge && cd dotforge && ./bootstrap.sh setup</code>
+            <code>git clone https://github.com/roman-dubovik/dotforge ~/dotforge && cd ~/dotforge && ./bootstrap.sh setup</code>
             <button class="copy-btn" aria-label="Copy git clone command">
               <span class="copy-icon" aria-hidden="true">⎘</span>
               <span class="copy-label">Copy</span>
@@ -518,7 +518,7 @@
           </div>
           <div class="cmd-entry">
             <span class="cmd-name">dot pull</span>
-            <span class="cmd-desc">fetch + ff-only merge + apply + doctor (strict)</span>
+            <span class="cmd-desc">fetch + ff-only merge + chezmoi apply + dot doctor (exit code propagated)</span>
           </div>
           <div class="cmd-entry">
             <span class="cmd-name">dot version / dot help</span>
