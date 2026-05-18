@@ -4,6 +4,8 @@
 # Usage:
 #   scripts/dot-apply.sh              # apply + show before/after doctor delta
 #   scripts/dot-apply.sh --dry-run    # show pending chezmoi diff (no mutations)
+#   scripts/dot-apply.sh --enable=X   # enable feature flag(s), persist, then apply
+#   scripts/dot-apply.sh --disable=X  # disable feature flag(s), persist, then apply
 #   scripts/dot-apply.sh --help|-h    # print this help
 
 set -euo pipefail
@@ -23,7 +25,44 @@ source "$REPO_ROOT/lib/log.sh" 2>/dev/null || {
     log_section() { printf "\n── %s ──\n" "$*"; }
 }
 
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/lib/state.sh"
+
 DRY_RUN=0
+ENABLE_FLAGS=()   # features to enable  (accumulated from --enable=a,b or --enable=a --enable=b)
+DISABLE_FLAGS=()  # features to disable
+
+# ── Flag helpers ──
+
+# Splits a comma-separated value and appends each item to the named array.
+# Usage: _append_csv_to_array "docker_desktop,ai_assistants" ENABLE_FLAGS
+_append_csv_to_array() {
+    local csv="$1"
+    local arr_name="$2"
+    local item rest
+    rest="$csv"
+    while [[ -n "$rest" ]]; do
+        item="${rest%%,*}"
+        # Trim whitespace (bash 3.2 compat — no ${var// })
+        item="$(printf "%s" "$item" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        [[ -n "$item" ]] && eval "${arr_name}+=(\"\$item\")"
+        if [[ "$rest" == *,* ]]; then
+            rest="${rest#*,}"
+        else
+            rest=""
+        fi
+    done
+}
+
+# Prints comma-joined valid feature names for error messages.
+_valid_features_csv() {
+    local out="" f
+    for f in "${DOTFORGE_FEATURES[@]}"; do
+        [[ -n "$out" ]] && out+=", "
+        out+="$f"
+    done
+    printf "%s" "$out"
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -31,16 +70,29 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=1
             shift
             ;;
+        --enable=*)
+            _append_csv_to_array "${1#--enable=}" ENABLE_FLAGS
+            shift
+            ;;
+        --disable=*)
+            _append_csv_to_array "${1#--disable=}" DISABLE_FLAGS
+            shift
+            ;;
         --help|-h)
             cat <<'EOF'
 dot apply — apply chezmoi dotfiles and show before/after doctor diff
 
 Usage:
-  dot apply              Apply chezmoi and show before/after doctor diff.
-                         Exit code matches post-apply doctor (0 = clean).
-  dot apply --dry-run    Show pending chezmoi diff without mutating anything.
-                         Equivalent to: chezmoi diff
-  dot apply --help|-h    Print this help.
+  dot apply                    Apply chezmoi and show before/after doctor diff.
+                               Exit code matches post-apply doctor (0 = clean).
+  dot apply --dry-run          Show pending chezmoi diff without mutating anything.
+                               Equivalent to: chezmoi diff
+  dot apply --enable=FEATURE   Enable one or more feature flags (comma-separated or
+                               repeated), persist to state.toml, then apply.
+  dot apply --disable=FEATURE  Disable one or more feature flags, persist, then apply.
+  dot apply --help|-h          Print this help.
+
+Features: docker_desktop, ai_assistants, vpn_suite, office_suite, media_tools, design_tools
 
 Notes:
   - Run 'dot doctor' first to inspect current drift.
@@ -55,6 +107,34 @@ EOF
             ;;
     esac
 done
+
+# ── Feature flag mutation (before apply) ──
+
+# Validate all requested flags first; fail fast before touching state.
+for _f in "${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"}" "${DISABLE_FLAGS[@]+"${DISABLE_FLAGS[@]}"}"; do
+    if ! state_valid_feature "$_f"; then
+        log_error "unknown feature: $_f (valid: $(_valid_features_csv))"
+        exit 2
+    fi
+done
+
+# Apply mutations if any were requested.
+if [[ "${#ENABLE_FLAGS[@]}" -gt 0 || "${#DISABLE_FLAGS[@]}" -gt 0 ]]; then
+    log_section "Feature flags"
+    state_init   # ensure state.toml exists with defaults
+
+    for _f in "${ENABLE_FLAGS[@]+"${ENABLE_FLAGS[@]}"}"; do
+        state_set "features.${_f}" true
+        log_ok "enabled: ${_f}"
+    done
+    for _f in "${DISABLE_FLAGS[@]+"${DISABLE_FLAGS[@]}"}"; do
+        state_set "features.${_f}" false
+        log_ok "disabled: ${_f}"
+    done
+
+    chezmoi_toml_sync
+    log_info "state.toml and chezmoi.toml synced."
+fi
 
 # ── Dry-run branch (exec replaces process; trap not needed — tmp files not yet created) ──
 

@@ -234,13 +234,26 @@ cmd_customize() {
     local features=(docker_desktop ai_assistants vpn_suite office_suite media_tools design_tools)
     local defaults=(true         true          true      false        true         true)
 
-    # Read current values from chezmoi.toml; fall back to defaults if absent.
+    # Load state.sh helpers so we can read state.toml.
+    local state_sh="$repo_root/scripts/lib/state.sh"
+    local state_loaded=0
+    if [[ -f "$state_sh" ]]; then
+        # shellcheck source=/dev/null
+        source "$state_sh"
+        state_loaded=1
+    fi
+
+    local state_toml="$HOME/.config/dotforge/state.toml"
     local chezmoi_toml="$HOME/.config/chezmoi/chezmoi.toml"
     local current_values=()
     local i
     for i in "${!features[@]}"; do
         local f="${features[$i]}" def="${defaults[$i]}" v=""
-        if [[ -f "$chezmoi_toml" ]]; then
+        # Priority: state.toml > chezmoi.toml > hardcoded default
+        if [[ "$state_loaded" -eq 1 && -f "$state_toml" ]]; then
+            v="$(state_get "features.${f}" 2>/dev/null || true)"
+        fi
+        if [[ -z "$v" && -f "$chezmoi_toml" ]]; then
             v="$(grep -E "^[[:space:]]*${f}[[:space:]]*=" "$chezmoi_toml" 2>/dev/null \
                  | sed -E 's/.*=[[:space:]]*(true|false).*/\1/' | head -1 || true)"
         fi
@@ -302,6 +315,19 @@ cmd_customize() {
     fi
 
     bash "$repo_root/scripts/customize-brewfile.sh" ${feature_args[@]+"${feature_args[@]}"}
+
+    # Persist feature selections to state.toml so future invocations pick them up.
+    if [[ "$state_loaded" -eq 1 && "${#feature_args[@]}" -gt 0 ]]; then
+        local a
+        for a in "${feature_args[@]}"; do
+            case "$a" in
+                --enable=*)  state_set "features.${a#--enable=}"  true  ;;
+                --disable=*) state_set "features.${a#--disable=}" false ;;
+            esac
+        done
+        say "Feature selections saved to state.toml."
+    fi
+
     say "If you want to apply the new Brewfile.local now, run:"
     echo "  chezmoi apply --include=scripts -v"
 }

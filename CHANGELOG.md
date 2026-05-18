@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Slice 2e — programmatic feature toggles**
+- `dot apply --enable=FEATURE` / `--disable=FEATURE` — toggle feature flags from the CLI; supports
+  comma-separated CSV (`--disable=office_suite,media_tools`) and repeated flags; validates names
+  and exits 2 with a listing of valid flags on unknown input
+- `dot features` — lists all six flags with current value, source (`state.toml` /
+  `chezmoi.toml` / `default`), and sync status (`in-sync` / `DIVERGENT`)
+- `scripts/lib/state.sh` — TOML read/write helpers: `state_init`, `state_get`, `state_set`,
+  `state_list_features`, `state_valid_feature`, `chezmoi_toml_sync`
+- `scripts/dot-features.sh` — implementation of `dot features` subcommand
+- State persisted to `~/.config/dotforge/state.toml`; synced to
+  `~/.config/chezmoi/chezmoi.toml` on every CLI mutation
+- `bootstrap.sh customize` now reads defaults from `state.toml` first (priority:
+  `state.toml` > `chezmoi.toml` > hardcoded default) and persists selections back to `state.toml`
+- bats tests: `tests/lib/state.bats` (24 tests), `tests/scripts/dot-apply-features.bats`
+  (14 tests), `tests/scripts/dot-features.bats` (13 tests)
 - Public launch: README rewrite as landing document
 - GitHub Pages landing site (`docs/index.html` + CSS + JS)
 - Curl-installer (`docs/install.sh`) — self-contained for fresh Mac
