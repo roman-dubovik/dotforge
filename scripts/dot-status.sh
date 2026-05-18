@@ -175,7 +175,13 @@ _warn="$(awk '/^\[WARN\]/' "$_doctor_out" 2>/dev/null | awk 'END{print NR}')"
 _fail="$(awk '/^\[FAIL\]/' "$_doctor_out" 2>/dev/null | awk 'END{print NR}')"
 rm -f "$_doctor_out"
 
-if [[ "$_fail" -gt 0 ]]; then
+# Doctor exited non-zero but emitted no parseable output → crash / unexpected exit.
+# Check this BEFORE the normal warn/fail branches so the normal paths still apply
+# when doctor exits non-zero and does emit [WARN]/[FAIL] lines.
+if [[ "$_doctor_rc" -ne 0 ]] && [[ "$_pass" -eq 0 ]] && [[ "$_warn" -eq 0 ]] && [[ "$_fail" -eq 0 ]]; then
+    printf "ERROR (doctor exited %s with no parseable output)\n" "$_doctor_rc"
+    DIVERGED=1
+elif [[ "$_fail" -gt 0 ]]; then
     printf "FAIL (%s pass, %s warn, %s fail)\n" "$_pass" "$_warn" "$_fail"
     DIVERGED=1
 elif [[ "$_warn" -gt 0 ]]; then
