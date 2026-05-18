@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `dot apply` — chezmoi apply + before/after `dot doctor` delta, with `--dry-run` support
 - `dot snapshot` — run scanners (cli, login items, macOS defaults) and auto-commit
-- `dot pull` — fetch (ff-only) + apply + strict doctor checks
+- `dot pull` — fetch (ff-only) + apply + `dot doctor` (exit code propagated)
 
 ### Changed
 - Enhanced dot CLI as primary user-facing interface for sync operations
