@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Slice 2d] - 2026-05-17
 
 ### Added
-- 6 feature flags in `chezmoi.toml.tmpl`: `docker_desktop`, `ai_assistants`, `vpn_suite`, `office_suite`, `media_tools`, `design_tools`
+- 6 feature flags in `chezmoi/.chezmoi.toml.tmpl`: `docker_desktop`, `ai_assistants`, `vpn_suite`, `office_suite`, `media_tools`, `design_tools`
 - `scan-macos --capture` mode to snapshot macOS defaults into `chezmoi/dot_config/dotforge/macos-defaults.txt`
 - bats test suite for bootstrap and CLI commands
 - Documentation for feature flags in launch prompts
@@ -83,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `bootstrap.sh doctor` subcommand — read-only diagnostic with 8 sync checks
-- Doctor checks: Git status, Brewfile sync, macOS defaults, login items, SSH keys, chezmoi status, dot CLI location, dot doctor pass/fail
+- Doctor checks: `chezmoi`, `brewfile`, `cli-globals`, `curl-toolchains`, `ssh-keys`, `macos-defaults`, `login-autostart`, `repo`
 
 ### Changed
 - Bootstrap menu structure to support subcommand pattern
