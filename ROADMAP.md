@@ -39,6 +39,7 @@ dotforge is a chezmoi-powered macOS bootstrap framework with CLI automation. Sta
 - **`~/.config/dotforge/state.toml`** — dedicated state file for CLI-driven mutations, kept in sync with `~/.config/chezmoi/chezmoi.toml`.
 - **`bootstrap.sh customize` integration** — defaults now read from `state.toml` first (priority: `state.toml` > `chezmoi.toml` > hardcoded default); selections saved back to `state.toml`.
 - **65 new bats tests** across `tests/lib/state.bats` (34), `tests/scripts/dot-apply-features.bats` (18), `tests/scripts/dot-features.bats` (13).
+- **Out of scope for this slice:** the `local_llm` feature flag (originally listed alongside 2e) remains deferred — see "What's next" below; it's blocked on ollama landing in the Brewfile.
 
 ## What's next
 
@@ -55,6 +56,10 @@ dotforge is a chezmoi-powered macOS bootstrap framework with CLI automation. Sta
 ### 🟡 2b. Plan 3 — Full three-way merge
 
 Polished three-way merge for scanner output files: instead of `--ours`/`--theirs`, diff both sides against the common ancestor and produce a merged result automatically. Required for the case where two machines both add different new items to `cli-globals.txt` without any shared lines conflicting.
+
+### 🟡 2c. `local_llm` feature flag (deferred from 2e)
+
+Add a seventh feature flag `local_llm` toggling local LLM packages (ollama + suggested models + optional open-webui). Originally bundled with Slice 2e — descoped because none of the LLM packages are in `Brewfile.tmpl` yet. Real prerequisite: decide on an ollama bundle (`ollama` + which models? `open-webui` cask?) and add to the Brewfile under the new flag. Once present, surfaces in `dot features` and `dot apply --enable=local_llm` automatically.
 
 ### 🟡 3. App-specific configs
 
