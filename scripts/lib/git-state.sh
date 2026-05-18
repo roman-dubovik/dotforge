@@ -52,14 +52,16 @@ git_is_dirty() {
 }
 
 # ── git_stash_save ──
-# Saves the current working tree + index to a new stash with MSG.
+# Saves the current working tree + index (including untracked files, -u) to a
+# new stash with MSG.  Using -u ensures git_is_dirty and git_stash_save agree on
+# what constitutes a "dirty" working tree (untracked files are included in both).
 # Prints the stash reference (e.g. "stash@{0}") on stdout.
 # Returns 1 if there is nothing to stash (clean working tree).
 git_stash_save() {
     local git_dir="$1"
     local msg="$2"
     local output
-    output="$(git -C "$git_dir" stash push -m "$msg" 2>&1)"
+    output="$(git -C "$git_dir" stash push -u -m "$msg" 2>&1)"
     local rc=$?
     if [[ "$output" == *"No local changes to save"* ]]; then
         return 1
