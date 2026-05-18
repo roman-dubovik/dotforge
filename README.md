@@ -48,9 +48,9 @@ Shipped in slices 2c, 2d, 2e, and Plan 3 MVP:
   what changed. Accepts `--dry-run` to preview without touching the filesystem.
 - **`dot snapshot`** — captures the current state of CLI globals, login items, and macOS defaults
   into tracked files and commits them automatically.
-- **`dot pull --resolve=ours|theirs|interactive`** — non-destructive multi-machine reconciliation.
-  Default (`abort`) is unchanged. `ours`/`theirs` stash local changes, merge, auto-resolve conflicts,
-  restore stash. `interactive` prompts per-file.
+- **`dot pull --resolve=ours|theirs|interactive`** — multi-machine conflict resolution.
+  Default (`abort`) is unchanged (ff-only, bail on conflict). `ours`/`theirs` stash local changes,
+  merge, auto-resolve conflicts in favor of the chosen side, restore stash. `interactive` prompts per-file.
 - **`dot status`** — read-only divergence report: ahead/behind counts vs origin, working tree
   cleanliness, uncommitted scanner outputs, and `dot doctor` summary. Exit 0 if in-sync, 1 if any
   divergence. Use `--fetch` to update remote refs first.

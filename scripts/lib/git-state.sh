@@ -76,7 +76,8 @@ git_stash_save() {
 
 # ── git_stash_pop ──
 # Pops a specific stash ref.
-# Returns 0 on clean pop; 1 on conflict (leaves MERGE_HEAD / conflict markers in place).
+# Returns 0 on clean pop; 1 on conflict (leaves conflict markers in the working tree;
+# stash entry is NOT dropped — it stays in `git stash list`).
 git_stash_pop() {
     local git_dir="$1"
     local stash_ref="$2"

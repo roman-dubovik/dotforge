@@ -38,7 +38,7 @@ dotforge is a chezmoi-powered macOS bootstrap framework with CLI automation. Sta
 - **`dot features`** — list all six flags with current value, source (`state.toml` / `chezmoi.toml` / `default`), and `in-sync` / `DIVERGENT` status.
 - **`~/.config/dotforge/state.toml`** — dedicated state file for CLI-driven mutations, kept in sync with `~/.config/chezmoi/chezmoi.toml`.
 - **`bootstrap.sh customize` integration** — defaults now read from `state.toml` first (priority: `state.toml` > `chezmoi.toml` > hardcoded default); selections saved back to `state.toml`.
-- **51 new bats tests** across `tests/lib/state.bats`, `tests/scripts/dot-apply-features.bats`, `tests/scripts/dot-features.bats`.
+- **65 new bats tests** across `tests/lib/state.bats` (34), `tests/scripts/dot-apply-features.bats` (18), `tests/scripts/dot-features.bats` (13).
 
 ## What's next
 
@@ -83,7 +83,7 @@ Capture browser autofill profiles, email accounts, and app authentication tokens
 
 ## Open questions
 
-1. **Persistent bootstrap menu** — Should `bootstrap.sh customize` store answers in chezmoi.toml so that repeat runs default to previous choices? Or keep it stateless (requires re-entry each time)?
-2. **Multi-machine conflict resolution strategy** — When two machines diverge (one has a newer brew formula, the other has a local app), should `dot pull` do a three-way merge (git-like), a "last-write-wins" squash, or fail with a manual-resolve prompt?
+1. **`dot config` editor?** — `state.toml` is now the persistence layer for feature flags. Should we expose a `dot config edit` command (open `$EDITOR` on the file) or keep mutations exclusively through `dot apply --enable/--disable`?
+2. **Plan 3b three-way merge strategy** — For full three-way merge on scanner output files (`cli-globals.txt`, `login-items.txt`, `macos-defaults.txt`): apply per-section, per-line, or per-file? Conflict surface differs across the three.
 3. **Archetype migration** — After initial bootstrap with `full` archetype, can user switch to `minimal-dev` (removing docker, media tools)? Or is archetype immutable once set? If mutable, how do we track "installed by archetype" vs "manually installed"?
 4. **Which feature flags next?** After `docker_desktop`, `ai_assistants`, `vpn_suite`, should we add more granular flags (`postgres`, `node_toolchain`, `ruby_toolchain`) or keep the current six? Tradeoff: more flags = more choice, but more prompts and harder testing surface.

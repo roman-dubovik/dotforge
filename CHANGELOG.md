@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detection, file resolution); all take explicit `GIT_DIR` arg for testability
 - `scripts/dot-status.sh` — implementation of `dot status` subcommand
 - `DOTFORGE_DOCTOR_SCRIPT` and `DOTFORGE_CHEZMOI_REPO` env overrides for CI / bats mocking
-- bats tests: `tests/lib/git-state.bats` (16 tests), `tests/scripts/dot-pull-resolve.bats`
-  (19 tests), `tests/scripts/dot-status.bats` (22 tests)
+- bats tests: `tests/lib/git-state.bats` (17 tests), `tests/scripts/dot-pull-resolve.bats`
+  (24 tests), `tests/scripts/dot-status.bats` (25 tests)
 
 - **Slice 2e — programmatic feature toggles**
 - `dot apply --enable=FEATURE` / `--disable=FEATURE` — toggle feature flags from the CLI; supports
@@ -38,8 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.config/chezmoi/chezmoi.toml` on every CLI mutation
 - `bootstrap.sh customize` now reads defaults from `state.toml` first (priority:
   `state.toml` > `chezmoi.toml` > hardcoded default) and persists selections back to `state.toml`
-- bats tests: `tests/lib/state.bats` (24 tests), `tests/scripts/dot-apply-features.bats`
-  (14 tests), `tests/scripts/dot-features.bats` (13 tests)
+- bats tests: `tests/lib/state.bats` (34 tests), `tests/scripts/dot-apply-features.bats`
+  (18 tests), `tests/scripts/dot-features.bats` (13 tests)
 - Public launch: README rewrite as landing document
 - GitHub Pages landing site (`docs/index.html` + CSS + JS)
 - Curl-installer (`docs/install.sh`) — self-contained for fresh Mac

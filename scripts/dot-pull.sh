@@ -73,7 +73,7 @@ Steps (abort mode):
 Steps (ours/theirs/interactive modes):
   1. chezmoi git -- fetch origin <branch>
   2. git stash (if working tree dirty)
-  3. chezmoi git -- pull origin <branch>  (merge, not ff-only)
+  3. chezmoi git -- pull --no-ff origin <branch>  (merge commit even when ff is possible)
   4. On conflict: resolve per mode
   5. chezmoi apply
   6. git stash pop (if stashed)
