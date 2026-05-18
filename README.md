@@ -37,8 +37,13 @@ macOS only · bash 3.2+ · chezmoi · Bitwarden · Homebrew
 
 ## What's new (May 2026)
 
-Shipped in slices 2c and 2d:
+Shipped in slices 2c, 2d, and 2e:
 
+- **`dot apply --enable/--disable`** — toggle feature flags from the CLI, persist to
+  `~/.config/dotforge/state.toml`, sync to `chezmoi.toml`, then apply. Example:
+  `dot apply --disable=office_suite,media_tools`.
+- **`dot features`** — list all six feature flags with current values and source
+  (`state.toml` / `chezmoi.toml` / `default`), and whether the two sources are in sync.
 - **`dot apply`** — runs `chezmoi apply`, then prints a before/after doctor delta so you see exactly
   what changed. Accepts `--dry-run` to preview without touching the filesystem.
 - **`dot snapshot`** — captures the current state of CLI globals, login items, and macOS defaults
@@ -226,7 +231,8 @@ Full reference for all dotforge entry points.
 | `bootstrap.sh` | `browse` | Read-only interactive walkthrough of what bootstrap does |
 | `dot` | `setup` | Alias for `bootstrap.sh setup` — available after first install |
 | `dot` | `doctor` | 8 read-only sync checks; exit 0/1/2 |
-| `dot` | `apply` | `chezmoi apply` + before/after doctor delta; accepts `--dry-run` |
+| `dot` | `apply` | `chezmoi apply` + before/after doctor delta; accepts `--dry-run`, `--enable=FEATURE`, `--disable=FEATURE` |
+| `dot` | `features` | List all feature flags with current values and source (`state.toml` / `chezmoi.toml` / `default`) |
 | `dot` | `snapshot` | `scan-cli --capture` + `scan-login-autostart --capture` + `scan-macos --capture` → auto-commit |
 | `dot` | `pull` | `git fetch` + `ff-only` + `chezmoi apply` + `dot doctor` (exit code propagated; no before/after delta — use `dot apply` for that) |
 | `dot` | `version / help` | Print version hash + branch, or show usage |
@@ -247,9 +253,31 @@ flags and regenerates `Brewfile.local` on every `chezmoi apply`.
 | `media_tools` | on | Spotify, VLC, media utilities |
 | `design_tools` | on | Figma, image/video editing apps |
 
-To toggle a flag: edit `~/.config/chezmoi/chezmoi.toml`, set the value, then run `dot apply`.
-The Brewfile regenerates automatically; packages that are no longer needed are not removed — run
-`brew bundle cleanup` manually if you want them uninstalled.
+### Programmatic toggles (Slice 2e)
+
+Feature flag state is persisted to `~/.config/dotforge/state.toml` and kept in sync with
+`~/.config/chezmoi/chezmoi.toml`. Use `dot apply` to toggle flags from the CLI:
+
+```bash
+# Enable a flag and apply immediately
+dot apply --enable=docker_desktop
+
+# Disable one or more flags (comma-separated CSV or repeated)
+dot apply --disable=office_suite,media_tools
+
+# Mixed: enable one, disable another, then apply
+dot apply --enable=office_suite --disable=media_tools
+
+# Inspect current values, sources, and sync status
+dot features
+```
+
+`dot features` shows the value for each flag, where it comes from (`state.toml`,
+`chezmoi.toml`, or compiled-in `default`), and whether the two sources are `in-sync` or
+`DIVERGENT`.
+
+The Brewfile regenerates automatically on every `chezmoi apply`; packages no longer needed are not
+removed automatically — run `brew bundle cleanup` if you want them uninstalled.
 
 ---
 

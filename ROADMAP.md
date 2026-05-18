@@ -32,11 +32,19 @@ dotforge is a chezmoi-powered macOS bootstrap framework with CLI automation. Sta
 - **Full macOS capture** — `scan-macos-defaults.sh --capture` persists to `chezmoi/dot_config/dotforge/macos-defaults.txt`; `chezmoi apply` rehydrates.
 - **bats test suite** — feature-flag toggles, scanner output validation, apply/pull/doctor semantics.
 
+### Slice 2e — Programmatic feature toggles (2026-05-18)
+
+- **`dot apply --enable/--disable`** — toggle feature flags programmatically: `dot apply --enable=docker_desktop --disable=office_suite,media_tools`. Supports CSV or repeated flags. Unknown flags exit 2 with a listing of valid names.
+- **`dot features`** — list all six flags with current value, source (`state.toml` / `chezmoi.toml` / `default`), and `in-sync` / `DIVERGENT` status.
+- **`~/.config/dotforge/state.toml`** — dedicated state file for CLI-driven mutations, kept in sync with `~/.config/chezmoi/chezmoi.toml`.
+- **`bootstrap.sh customize` integration** — defaults now read from `state.toml` first (priority: `state.toml` > `chezmoi.toml` > hardcoded default); selections saved back to `state.toml`.
+- **51 new bats tests** across `tests/lib/state.bats`, `tests/scripts/dot-apply-features.bats`, `tests/scripts/dot-features.bats`.
+
 ## What's next
 
-### 🟢 1. Slice 2e — Programmatic flag toggles
+### ~~🟢 1. Slice 2e — Programmatic flag toggles~~ ✅ Shipped 2026-05-18
 
-Enable / disable features from command line: `dot apply --enable=docker_desktop --disable=office_suite`. Persist menu state across runs (bootstrap.sh customize answers stored in chezmoi.toml). Removes manual edit of feature sections in prompts.
+~~Enable / disable features from command line: `dot apply --enable=docker_desktop --disable=office_suite`. Persist menu state across runs (bootstrap.sh customize answers stored in chezmoi.toml). Removes manual edit of feature sections in prompts.~~
 
 ### 🟡 2. Plan 3 — Multi-machine reconciliation
 
@@ -63,7 +71,7 @@ Capture browser autofill profiles, email accounts, and app authentication tokens
 - **macOS-only.** Requires Darwin kernel, zsh/bash, curl, brew, git, chezmoi, Bitwarden CLI.
 - **Requires Bitwarden.** SSH keys are retrieved at runtime via `bw get`. No fallback to 1Password, Dashlane, or plain-text files.
 - **Requires Homebrew.** All package management goes through `brew` and `brew bundle`. GNU/Linux package managers not supported.
-- **Git-mediated sync only.** No active reconciliation between machines yet (Slice 2e). If two machines both run `dot snapshot`, pushing both to the same branch requires manual merge.
+- **Git-mediated sync only.** No active multi-machine reconciliation yet (Plan 3). If two machines both run `dot snapshot`, pushing both to the same branch requires manual merge.
 - **Some apps require manual restore.** IDE settings, Hammerspoon config, browser extensions — each has its own backup strategy. dotforge covers shell config, system defaults, Brewfile, login items, and SSH keys; beyond that, user must export / restore app-specifically or rely on iCloud / cloud-sync where available.
 - **Apple sandboxing blocks certain captures.** Safari keychain, Mail accounts, and system credentials in Keychain are not shell-accessible without full-disk-access entitlements (and even then, Keychain APIs require Objective-C). Bitwarden is the workaround.
 
