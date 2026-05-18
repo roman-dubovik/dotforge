@@ -95,8 +95,10 @@ SCANNER_FILES="${DOTFORGE_SCANNER_FILES:-$_DEFAULT_SCANNER_FILES}"
 
 if [[ "$DO_FETCH" -eq 1 ]]; then
     log_info "Fetching origin/${BRANCH}…"
-    if ! chezmoi git -- fetch origin "$BRANCH" 2>/dev/null; then
-        log_warn "fetch failed — divergence counts may be stale"
+    fetch_err=""
+    if ! fetch_err="$(chezmoi git -- fetch origin "$BRANCH" 2>&1)"; then
+        log_warn "fetch failed — divergence counts may be stale: ${fetch_err}"
+        DIVERGED=1
     fi
 fi
 
