@@ -1,7 +1,31 @@
-# dotforge
+<p align="center">
+  <a href="https://roman-dubovik.github.io/dotforge/">
+    <img src="docs/assets/dotforge-social-card.png" alt="dotforge — Opinionated Mac bootstrap. One command, fresh Mac to fully configured dev machine. chezmoi + Homebrew + Bitwarden, with a dot CLI for day-to-day sync." width="820">
+  </a>
+</p>
 
-Opinionated Mac bootstrap. One command on a fresh machine installs everything: CLI tools, GUI apps,
-dotfiles, SSH keys from Bitwarden, macOS defaults, login items, and a `dot` CLI for day-to-day sync.
+<p align="center">
+  <strong>🔨&nbsp;<a href="https://roman-dubovik.github.io/dotforge/">roman-dubovik.github.io/dotforge</a></strong>
+  &nbsp;·&nbsp;
+  <a href="#install">Install</a>
+  &nbsp;·&nbsp;
+  <a href="#quick-start">Quick start</a>
+  &nbsp;·&nbsp;
+  <a href="#commands">Commands</a>
+  &nbsp;·&nbsp;
+  <a href="ROADMAP.md">Roadmap</a>
+  &nbsp;·&nbsp;
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
+
+<p align="center">
+  <em>Opinionated Mac bootstrap. One curl from bare macOS to a fully configured dev machine.<br>
+  Homebrew, dotfiles, SSH keys from Bitwarden, macOS defaults — all reproducible, all in git.</em>
+</p>
+
+---
+
+# dotforge
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/roman-dubovik/dotforge/main/docs/install.sh | bash
