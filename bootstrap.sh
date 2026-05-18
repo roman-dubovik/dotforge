@@ -320,6 +320,8 @@ cmd_customize() {
     if [[ "$state_loaded" -eq 1 && "${#feature_args[@]}" -gt 0 ]]; then
         _persist_feature_args "${feature_args[@]}"
         say "Feature selections saved to state.toml and synced to chezmoi.toml."
+    elif [[ "$state_loaded" -eq 0 && "${#feature_args[@]}" -gt 0 ]]; then
+        ok "WARN: state.sh not found; feature selections will not be persisted to state.toml"
     fi
 
     say "If you want to apply the new Brewfile.local now, run:"
