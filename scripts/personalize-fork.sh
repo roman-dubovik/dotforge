@@ -21,7 +21,9 @@
 #   --email <email>       Email for git author / personal profile
 #   --repo <name>         Repo name on GitHub (default: dotforge)
 #   --reset-ssh           Replace example SSH IdentityFile with id_ed25519
-#   --create-remote       Auto-create new public repo on GitHub and push
+#   --create-remote       Auto-create new repo on GitHub and push (private by default)
+#   --public              Make the new repo public (default: private — your snapshots
+#                         contain installed apps, login items, and macOS defaults)
 #   --no-commit           Make changes but don't commit them
 #   --non-interactive     Skip narration + prompts (auto on no-TTY)
 #   --help|-h             Show this header
@@ -39,6 +41,7 @@ RESET_SSH=0
 CREATE_REMOTE=0
 NO_COMMIT=0
 INTERACTIVE=1
+VISIBILITY="--private"
 
 ORIG_GH_USER="roman-dubovik"
 ORIG_REPO_NAME="dotforge"
@@ -54,6 +57,8 @@ while [[ $# -gt 0 ]]; do
         --repo)            NEW_REPO_NAME="$2"; shift 2 ;;
         --reset-ssh)       RESET_SSH=1; shift ;;
         --create-remote)   CREATE_REMOTE=1; shift ;;
+        --public)          VISIBILITY="--public"; shift ;;
+        --private)         VISIBILITY="--private"; shift ;;
         --no-commit)       NO_COMMIT=1; shift ;;
         --non-interactive) INTERACTIVE=0; shift ;;
         --help|-h)
@@ -235,7 +240,6 @@ echo ""
 echo "  Files NOT touched (you'll customize separately):"
 echo "    Brewfile          (run 'sync' on your Mac to overwrite with your apps)"
 echo "    chezmoi/private_dot_zshrc.tmpl  ('chezmoi re-add' after first apply)"
-echo "    chezmoi/dot_claude/settings.json (delete or replace by hand)"
 echo "    docs/superpowers/* (historical design docs — left intact)"
 echo ""
 
@@ -316,7 +320,8 @@ style_ok "Committed."
 style_header "Step 6/6: Create the new GitHub repo and push"
 
 if (( CREATE_REMOTE == 0 )) && (( INTERACTIVE == 1 )); then
-    style_note "I can create the public repo on GitHub via 'gh repo create' and"
+    visibility_label="${VISIBILITY#--}"
+    style_note "I can create the ${visibility_label} repo on GitHub via 'gh repo create' and"
     style_note "push to it right now. This requires:"
     style_note "  • gh CLI installed (it is)"
     style_note "  • gh auth login completed for $GH_USER (or one with permissions"
@@ -350,7 +355,7 @@ if (( CREATE_REMOTE == 1 )); then
     git -C "$REPO_ROOT" remote remove origin 2>/dev/null || true
 
     style_step "Creating $GH_USER/$NEW_REPO_NAME and pushing..."
-    gh repo create "$GH_USER/$NEW_REPO_NAME" --public \
+    gh repo create "$GH_USER/$NEW_REPO_NAME" "$VISIBILITY" \
         --source="$REPO_ROOT" --remote=origin --push \
         --description "Personal Mac bootstrap (forked from $ORIG_GH_USER/$ORIG_REPO_NAME)"
 
@@ -375,7 +380,7 @@ else
 
   cd $REPO_ROOT
   git remote remove origin 2>/dev/null
-  gh repo create $GH_USER/$NEW_REPO_NAME --public \\
+  gh repo create $GH_USER/$NEW_REPO_NAME $VISIBILITY \\
       --source=. --remote=origin --push
 
 EOM
