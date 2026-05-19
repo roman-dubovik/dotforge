@@ -177,7 +177,7 @@ export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
 {{- end }}
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 # The following lines have been added by Docker Desktop to enable Docker CLI completions.
-fpath=(/Users/romandubovik/.docker/completions $fpath)
+fpath=($HOME/.docker/completions $fpath)
 autoload -Uz compinit
 compinit
 # End of Docker CLI completions

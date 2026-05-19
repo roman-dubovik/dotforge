@@ -1,55 +1,15 @@
+# dotforge — macOS defaults seed
+#
+# Minimal example. Replace with your own state by running:
+#     dot snapshot
+# which overwrites this file with `scan-macos-defaults --capture` output
+# from the current Mac, then commits to your private fork.
+#
+# Lines starting with `#` are ignored; everything else is fed to
+# `bash -c` by .chezmoiscripts/run_onchange_60-apply-macos-defaults.sh.tmpl.
 
-# ── Dock ──
 defaults write com.apple.dock autohide -bool true
-defaults write com.apple.dock autohide-delay -float 0
-defaults write com.apple.dock autohide-time-modifier -float 0.2
-defaults write com.apple.dock mineffect -string "scale"
-defaults write com.apple.dock minimize-to-application -bool true
-defaults write com.apple.dock show-recents -bool false
-defaults write com.apple.dock tilesize -float 60
-
-# ── Finder ──
-defaults write -g AppleShowAllExtensions -bool false
-defaults write NSGlobalDomain AppleShowAllFiles -bool false
-defaults write com.apple.finder AppleShowAllFiles -bool false
-defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool false
-defaults write com.apple.finder FXDefaultSearchScope -string "SCcf"
-defaults write com.apple.finder FXEnableExtensionChangeWarning -bool false
-defaults write com.apple.finder FXPreferredViewStyle -string "Nlsv"
 defaults write com.apple.finder ShowPathbar -bool true
 defaults write com.apple.finder ShowStatusBar -bool true
-defaults write com.apple.finder WarnOnEmptyTrash -bool false
-defaults write com.apple.finder _FXShowPosixPathInTitle -bool false
-
-# ── Screenshots ──
-defaults write com.apple.screencapture disable-shadow -bool false
-defaults write com.apple.screencapture include-date -bool false
 defaults write com.apple.screencapture location -string "$HOME/Pictures/Screenshots"
-defaults write com.apple.screencapture type -string "png"
-
-# ── Keyboard ──
 defaults write -g ApplePressAndHoldEnabled -bool false
-defaults write -g InitialKeyRepeat -int 15
-defaults write -g KeyRepeat -int 2
-defaults write -g NSAutomaticCapitalizationEnabled -bool true
-defaults write -g NSAutomaticDashSubstitutionEnabled -bool false
-defaults write -g NSAutomaticPeriodSubstitutionEnabled -bool true
-defaults write -g NSAutomaticQuoteSubstitutionEnabled -bool false
-defaults write -g NSAutomaticSpellingCorrectionEnabled -bool false
-
-# ── Trackpad ──
-defaults write com.apple.AppleMultitouchTrackpad Clicking -int 0
-defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -int 0
-defaults write -g com.apple.mouse.tapBehavior -int 0
-defaults write -g com.apple.trackpad.scaling -float 1.5
-
-# ── UI ──
-defaults write com.apple.LaunchServices LSQuarantine -bool false
-defaults write -g NSScrollAnimationEnabled -bool false
-defaults write -g NSWindowResizeTime -float 0.001
-defaults write -g NSWindowShouldDragOnGesture -bool false
-
-# ── Safari ──
-defaults write com.apple.Safari IncludeDevelopMenu -bool false
-defaults write com.apple.Safari WebKitDeveloperExtrasEnabledPreferenceKey -bool false
-defaults write com.apple.Safari com.apple.Safari.ContentPageGroupIdentifier.WebKit2DeveloperExtrasEnabled -bool false

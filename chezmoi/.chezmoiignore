@@ -2,9 +2,10 @@
 # Pattern syntax is gitignore-like, paths are relative to $HOME.
 # Without these, `chezmoi diff` would constantly nag about local-only state.
 
-# ── ~/.claude — managed parts: CLAUDE.md, skills/, settings.json, plugins/ ──
-# Everything below is local cache / state / per-machine logs that should not
-# travel between Macs.
+# ── ~/.claude — dotforge does NOT ship any Claude config out of the box.
+# Add your own with `chezmoi add ~/.claude/CLAUDE.md` etc. after install.
+# The entries below ignore local cache / state / per-machine logs so that
+# `chezmoi diff` stays quiet on whatever you do choose to add.
 .claude/.claude.json
 .claude/.claude.json.*
 .claude/.mcp.json
